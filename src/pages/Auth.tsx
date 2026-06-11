@@ -6,7 +6,12 @@ export default function Auth() {
   const [sent, setSent] = useState(false);
 
   async function magicLink() {
-    const { error } = await supabase.auth.signInWithOtp({ email });
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin + window.location.pathname,
+      },
+    });
     if (!error) setSent(true);
     else alert(error.message);
   }
