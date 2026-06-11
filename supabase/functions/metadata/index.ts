@@ -151,6 +151,30 @@ async function searchMusicBrainz(q: string): Promise<Normalized[]> {
 // ---------- handler ----------
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+
+  // POST { item } — persist a specific picked search result into media_items
+  if (req.method === "POST") {
+    try {
+      const { item } = await req.json();
+      if (!item?.media_type || !item?.external_source || !item?.external_id || !item?.title) {
+        return json({ error: "invalid item" }, 400);
+      }
+      const sb = createClient(
+        Deno.env.get("SB_URL")!,
+        Deno.env.get("SB_SERVICE_ROLE")!,
+      );
+      const { data, error } = await sb
+        .from("media_items")
+        .upsert(item, { onConflict: "media_type,external_source,external_id" })
+        .select("id")
+        .single();
+      if (error) throw error;
+      return json({ saved: data.id });
+    } catch (e) {
+      return json({ error: String(e) }, 500);
+    }
+  }
+
   try {
     const url = new URL(req.url);
     const type = url.searchParams.get("type") ?? "";

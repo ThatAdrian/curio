@@ -64,6 +64,10 @@ src/
 docs/ROADMAP.md      every feature, phased, mapped to its tables
 ```
 
+## Attribution (required before public launch)
+- **TMDB:** show "This product uses the TMDB API but is not endorsed or certified by TMDB" + their logo (footer/About). Ship this with the first footer component.
+- IGDB, Open Library, MusicBrainz and Cover Art Archive: credit as data sources on the About page.
+
 ## Conventions
 - All writes go through RLS — never ship the service-role key to the client.
 - `media_items` is only written by the edge function (`?save=1`).
