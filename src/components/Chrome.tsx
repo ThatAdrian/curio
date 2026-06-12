@@ -221,6 +221,7 @@ export function CustomizerSheet({ open, onClose }: { open: boolean; onClose: () 
   const { profile, setThemePatch, toast } = useApp();
   const t: Theme = profile?.theme ?? {};
   const ACCENTS = ["#8a7bff", "#ff6b5e", "#2ed3b0", "#ffb454", "#ff6fb5", "#3dff8e"];
+  const navSheet = useNavigate();
   const [earned, setEarned] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (!open || !profile) return;
@@ -336,14 +337,9 @@ export function CustomizerSheet({ open, onClose }: { open: boolean; onClose: () 
         </section>
 
         <section>
-          <div className="section-label">Profile modules — what visitors see</div>
-          {MODS.map(([k, label]) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
-              <button className={"switch" + (mods[k] !== false ? " on" : "")} role="switch" aria-checked={mods[k] !== false}
-                onClick={() => setThemePatch({ modules: { ...mods, [k]: mods[k] === false } } as any)} />
-              <span style={{ fontSize: 13.5 }}>{label}</span>
-            </div>
-          ))}
+          <div className="section-label">Profile modules</div>
+          <p className="sub" style={{ marginBottom: 10 }}>Add, remove and rearrange profile modules with <b>Edit profile</b> on your profile page — drag to taste.</p>
+          <button className="btn small" onClick={() => { onClose(); navSheet("/"); setTimeout(() => window.dispatchEvent(new Event("curio-edit-profile")), 80); }}>✎ Open profile in edit mode</button>
         </section>
 
         <section>

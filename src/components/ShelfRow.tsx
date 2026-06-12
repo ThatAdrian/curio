@@ -218,10 +218,10 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = tru
                         el.style.transition = "none";
                         peel.current = { el, item: it, p: 0, x: e.clientX, y: e.clientY };
                       }}>
-                      {it.price_sticker.label}
+                      {it.price_sticker.label}<small>charity find</small>
                     </span>
                   )}
-                  {it.price_sticker?.label && !ownerView && <span className="price-stk" style={{ cursor: "default" }}>{it.price_sticker.label}</span>}
+                  {it.price_sticker?.label && !ownerView && <span className="price-stk" style={{ cursor: "default" }}>{it.price_sticker.label}<small>as marked</small></span>}
                   {stale && <div className="dustf" />}
                 </div>
               </div>

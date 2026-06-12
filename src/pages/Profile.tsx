@@ -1,8 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase, notify, MEDIA_LABELS, MediaType } from "../lib/supabase";
 import { useApp } from "../lib/app";
-import { Spinner, Empty, Cover } from "../components/ui";
+import { Spinner, Empty, Cover, Modal } from "../components/ui";
 import { ShelfRow, ShelfItemRow, ShelfSprites } from "../components/ShelfRow";
 import { Canvas, Guestbook } from "../components/Social";
 import { SendBagModal, SendWrapModal } from "../components/Gifts";
@@ -11,9 +11,11 @@ import { awardBadges } from "../lib/extras";
 
 const UNIT_CLASS: Record<string, string> = { film: "unit-rental", tv: "unit-rental", game: "unit-cab", book: "unit-wood", music: "unit-crate" };
 
+const MODULE_KEYS = ["stats","song","now","top","shelves","canvas","loans","connections","badges","reviews","status","dna","spaces","guestbook"];
+
 export default function Profile() {
   const { username } = useParams();
-  const { session, profile: myProfile, toast } = useApp();
+  const { session, profile: myProfile, toast, setThemePatch } = useApp();
   const [p, setP] = useState<any | null | undefined>(undefined);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [followers, setFollowers] = useState(0);
@@ -27,6 +29,43 @@ export default function Profile() {
   const [gift, setGift] = useState<"bag" | "wrap" | null>(null);
   const [connections, setConnections] = useState<any[]>([]);
   const [blocked, setBlocked] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [order, setOrder] = useState<string[]>(MODULE_KEYS);
+  const [dragK, setDragK] = useState<string | null>(null);
+  const orderRef = useRef<string[]>(MODULE_KEYS);
+  const [topItems, setTopItems] = useState<any[]>([]);
+  const [loans, setLoans] = useState<any[]>([]);
+  const [pickingTop, setPickingTop] = useState(false);
+
+  useEffect(() => { orderRef.current = order; }, [order]);
+  useEffect(() => {
+    const h = () => setEditing(true);
+    window.addEventListener("curio-edit-profile", h);
+    return () => window.removeEventListener("curio-edit-profile", h);
+  }, []);
+  useEffect(() => {
+    document.body.classList.toggle("editing", editing);
+    return () => { document.body.classList.remove("editing"); };
+  }, [editing]);
+  useEffect(() => {
+    if (!p) return;
+    const saved = (((p.theme?.module_order as string[]) ?? [])).filter((k) => MODULE_KEYS.includes(k));
+    setOrder([...saved, ...MODULE_KEYS.filter((k) => !saved.includes(k))]);
+    setEditing(false);
+  }, [p?.id]);
+  useEffect(() => {
+    const src: any = (session?.user?.id && p?.id === session.user.id ? myProfile?.theme : p?.theme) ?? {};
+    const ids = ((src.top_shelf as string[]) ?? []);
+    if (!ids.length) { setTopItems([]); return; }
+    supabase.from("media_items").select("id,title,media_type,year,cover_url").in("id", ids)
+      .then(({ data }) => { const by: any = {}; ((data as any[]) ?? []).forEach((m) => (by[m.id] = m)); setTopItems(ids.map((i) => by[i]).filter(Boolean)); });
+  }, [p?.id, JSON.stringify((p?.theme as any)?.top_shelf), JSON.stringify((myProfile?.theme as any)?.top_shelf)]);
+  useEffect(() => {
+    if (!p?.id || session?.user?.id !== p.id) { setLoans([]); return; }
+    supabase.from("loans").select("*, media_items(title), lender:profiles!loans_lender_id_fkey(username), borrower:profiles!loans_borrower_id_fkey(username)")
+      .or(`lender_id.eq.${p.id},borrower_id.eq.${p.id}`).eq("status", "active")
+      .then(({ data }) => setLoans((data as any[]) ?? []));
+  }, [p?.id, session?.user?.id]);
 
   const isOwn = !username || (myProfile && username === myProfile.username);
 
@@ -108,7 +147,7 @@ export default function Profile() {
     </Empty></main>;
   }
 
-  const t = (p.theme ?? {}) as any;
+  const t = (((session?.user?.id === p.id ? myProfile?.theme : null) ?? p.theme) ?? {}) as any;
   const mods = t.modules ?? {};
   const show = (k: string) => mods[k] !== false;
   const effMat = (s: any) => (s.material && s.material !== "default") ? s.material : (t.shelfskin && t.shelfskin !== "default" ? t.shelfskin : null);
@@ -152,7 +191,10 @@ export default function Profile() {
         </div>
         <div className="profile-actions">
           {isOwn
-            ? <Link className="btn small" to="/settings">Edit profile</Link>
+            ? <>
+                <button className={"btn small" + (editing ? " primary" : "")} onClick={() => setEditing(!editing)}>{editing ? "✓ Done" : "✎ Edit profile"}</button>
+                <Link className="btn small" to="/settings">⚙ Settings</Link>
+              </>
             : session && <>
                 <button className={"btn small" + (iFollow ? "" : " primary")} onClick={toggleFollow}>{iFollow ? "Following ✓" : "+ Follow"}</button>
                 <button className="btn small" onClick={() => setGift("bag")}>🛍 Bag</button>
@@ -174,116 +216,178 @@ export default function Profile() {
         </div>
       </div>
 
-      {show("stats") && <div className="stat-row">
-        {(["film", "tv", "game", "book", "music"] as MediaType[]).map((mt) => (
-          <div key={mt} className={`card stat t-${mt}`}>
-            <b>{counts[mt] ?? 0}</b><span>{MEDIA_LABELS[mt]}s</span>
-          </div>
-        ))}
-      </div>}
-
-      <div className="pgrid">
-        <div className="pmod wide">
-          <div className="section-label">{isOwn ? "Your shelves — as visitors see them" : "On the shelves"}</div>
-          {shelves.length === 0 && <Empty>{isOwn ? <>Nothing public yet — flip a shelf's 👁 on the <Link to="/shelf">Shelf page</Link>.</> : "Their shelves are private, or empty. Mysterious either way."}</Empty>}
-          {shelves.map((s) => (
-            <div key={s.id} className={`shelf-unit ${UNIT_CLASS[s.media_type ?? "book"]}${effMat(s) ? " skin-" + effMat(s) : ""}`} style={{ marginBottom: 18 }}>
-              <span className="unit-label">{s.name.toUpperCase()}</span>
-              <div>
-                <ShelfRow items={items[s.id] ?? []} ownerView={!!isOwn} ownerId={p.id} onChanged={load} showPlays={showPlays} />
-                <ShelfSprites decorations={(s.decorations as any) ?? []} editable={false} />
-                <div className="plank" />
+      {(() => {
+        const ytm = (sg: any) => `https://music.youtube.com/search?q=${encodeURIComponent((((sg?.artist ?? "") + " " + (sg?.title ?? "")).trim()))}`;
+        const song = t.profile_song as { title?: string; artist?: string } | undefined;
+        const statusTxt = t.status as string | undefined;
+        const allItems: any[] = Object.values(items).flat();
+        const dna = (["film", "tv", "game", "book", "music"] as MediaType[]).map((mt) => {
+          const n = allItems.filter((i: any) => i.media_items?.media_type === mt).length;
+          return { mt, n, pct: Math.round((n / (allItems.length || 1)) * 100) };
+        });
+        const lbl = (x: string) => <div className="section-label">{x}</div>;
+        const REG: { k: string; name: string; wide?: boolean; hide?: boolean; body: any }[] = [
+          { k: "stats", name: "Stats", wide: true, body: <>{lbl("Stats")}<div className="stat-row" style={{ margin: 0 }}>
+              {(["film", "tv", "game", "book", "music"] as MediaType[]).map((mt) => (
+                <div key={mt} className={`card stat t-${mt}`}><b>{counts[mt] ?? 0}</b><span>{MEDIA_LABELS[mt]}s</span></div>
+              ))}</div></> },
+          { k: "song", name: "Profile song", hide: !song && !isOwn, body: <>{lbl("Profile song")}
+              {song ? <p style={{ fontSize: 13.5 }}>🎶 <b>{song.title}</b>{song.artist ? <span className="muted"> — {song.artist}</span> : null} <a className="btn small" style={{ marginLeft: 8 }} target="_blank" rel="noreferrer" href={ytm(song)}>▶</a></p>
+                : <p className="faint" style={{ fontSize: 13 }}>No anthem set. Tragic.</p>}
+              {isOwn && <button className="btn small" style={{ marginTop: 8 }} onClick={() => {
+                const ti = prompt("Song title:", song?.title ?? ""); if (ti === null) return;
+                const ar = prompt("Artist:", song?.artist ?? "") ?? "";
+                setThemePatch({ profile_song: ti.trim() ? { title: ti.trim(), artist: ar.trim() } : null } as any);
+              }}>✎ {song ? "Change" : "Set your anthem"}</button>}</> },
+          { k: "now", name: "In rotation", hide: inRotation.length === 0 && !isOwn, body: <>{lbl("In rotation — partway through")}
+              {inRotation.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Start something — progress shows here.</p>}
+              {inRotation.map((it: any) => (
+                <Link key={it.id} to={`/m/${it.media_items?.id}`} className="rot-row" style={{ color: "var(--text)", textDecoration: "none" }}>
+                  <span style={{ color: `var(--${it.media_items?.media_type})` }}>●</span>
+                  <span className="nfo"><b>{it.media_items?.title}</b>
+                    <span className="progress-bar" style={{ margin: "5px 0 0" }}><i style={{ width: it.completion + "%" }} /></span></span>
+                  <span className="mono faint" style={{ fontSize: 10 }}>{it.completion}%</span>
+                </Link>))}</> },
+          { k: "top", name: "Top shelf", wide: true, hide: topItems.length === 0 && !isOwn, body: <>{lbl("Top shelf — the all-timers")}
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+                {topItems.map((m: any) => (
+                  <Link key={m.id} to={`/m/${m.id}`} style={{ width: 76, color: "var(--text)", textDecoration: "none" }}>
+                    <Cover url={m.cover_url} title={m.title} style={{ aspectRatio: m.media_type === "music" ? "1" : "2/3" }} />
+                    <span className="mono" style={{ fontSize: 8.5, display: "block", marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.title.toUpperCase()}</span>
+                  </Link>))}
+                {topItems.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing enshrined yet.</p>}
               </div>
-              <div className="unit-foot"><span className="mono">{(items[s.id] ?? []).length} shelved</span></div>
-            </div>
-          ))}
-        </div>
-
-        {show("rotation") && inRotation.length > 0 && (
-          <div className="card pad pmod">
-            <div className="section-label">In rotation — partway through</div>
-            {inRotation.map((it: any) => (
-              <Link key={it.id} to={`/m/${it.media_items?.id}`} className="rot-row" style={{ color: "var(--text)", textDecoration: "none" }}>
-                <span style={{ color: `var(--${it.media_items?.media_type})` }}>●</span>
-                <span className="nfo">
-                  <b>{it.media_items?.title}</b>
-                  <span className="progress-bar" style={{ margin: "5px 0 0" }}><i style={{ width: it.completion + "%" }} /></span>
-                </span>
-                <span className="mono faint" style={{ fontSize: 10 }}>{it.completion}%</span>
-              </Link>
-            ))}
+              {isOwn && <button className="btn small" style={{ marginTop: 10 }} onClick={() => setPickingTop(true)}>✎ Choose up to 6</button>}</> },
+          { k: "shelves", name: "Shelves", wide: true, body: <>
+              <div className="section-label">{isOwn ? "Your shelves — as visitors see them" : "On the shelves"}</div>
+              {shelves.length === 0 && <Empty>{isOwn ? <>Nothing public yet — flip a shelf's 👁 on the <Link to="/shelf">Shelf page</Link>.</> : "Their shelves are private, or empty. Mysterious either way."}</Empty>}
+              {shelves.map((sh) => (
+                <div key={sh.id} className={`shelf-unit ${UNIT_CLASS[sh.media_type ?? "book"]}${effMat(sh) ? " skin-" + effMat(sh) : ""}`} style={{ marginBottom: 18 }}>
+                  <span className="unit-label">{sh.name.toUpperCase()}</span>
+                  <div>
+                    <ShelfRow items={items[sh.id] ?? []} ownerView={!!isOwn} ownerId={p.id} onChanged={load} showPlays={showPlays} />
+                    <ShelfSprites decorations={(sh.decorations as any) ?? []} editable={false} />
+                    <div className="plank" />
+                  </div>
+                  <div className="unit-foot"><span className="mono">{(items[sh.id] ?? []).length} shelved</span></div>
+                </div>))}</> },
+          { k: "canvas", name: "The Canvas", wide: true, body: <>{lbl("The canvas")}<Canvas ownerId={p.id} editable={!!isOwn && !!session} /></> },
+          { k: "loans", name: "On loan", hide: !isOwn || loans.length === 0, body: <>{lbl("On loan")}
+              {loans.map((l: any) => (
+                <div key={l.id} className="wl-row"><span style={{ flex: 1, fontSize: 13 }}>
+                  <b>{l.media_items?.title}</b> <span className="mono faint" style={{ fontSize: 10 }}>{l.lender_id === p.id ? `→ @${l.borrower?.username}` : `← @${l.lender?.username}`}</span></span>
+                  {l.due_at && <span className="mono faint" style={{ fontSize: 9.5 }}>{Math.max(0, Math.ceil((+new Date(l.due_at) - Date.now()) / 86400000))}d</span>}
+                </div>))}</> },
+          { k: "connections", name: "Connections", hide: connections.length === 0 && !isOwn, body: <>{lbl("Elsewhere")}
+              {connections.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing linked — add some in <Link to="/settings">Settings</Link>.</p>}
+              <div className="badge-row">{connections.map((c) => (
+                <span key={c.provider} className="conn-chip" title={c.provider}><i>{CONN_ICON[c.provider] ?? CONN_ICON.other}</i>{c.external_username}<span className="mono">{c.provider.toUpperCase()}</span></span>))}</div></> },
+          { k: "badges", name: "Badges", body: <>{lbl("Badges")}
+              {badges.length === 0 && <p className="faint" style={{ fontSize: 13 }}>None yet — shelve, review, rate, repeat.</p>}
+              <div className="badge-row">{badges.map((b: any) => (
+                <span key={b.badges?.slug} className="badge-chip" title={b.badges?.description}><i>{b.badges?.icon}</i>{b.badges?.name}</span>))}</div></> },
+          { k: "reviews", name: "Recent reviews", wide: true, body: <>{lbl("Recent reviews")}
+              {recentReviews.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing reviewed yet.</p>}
+              {recentReviews.map((rv) => (
+                <Link key={rv.id} to={`/m/${rv.media_items?.id}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "9px 0", color: "var(--text)", textDecoration: "none" }}>
+                  <Cover url={rv.media_items?.cover_url} title={rv.media_items?.title ?? "?"} style={{ width: 36, height: 50, flex: "none", padding: 4 }} />
+                  <span style={{ flex: 1, minWidth: 0 }}><b style={{ display: "block", fontSize: 13.5 }}>{rv.media_items?.title}</b>
+                    <span className="faint" style={{ fontSize: 11.5, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rv.body_md}</span></span>
+                </Link>))}</> },
+          { k: "status", name: "Status", hide: !statusTxt && !isOwn, body: <>{lbl("Status")}
+              {statusTxt ? <p className="bio" style={{ fontStyle: "italic" }}>“{statusTxt}”</p> : <p className="faint" style={{ fontSize: 13 }}>No status. Enigmatic.</p>}
+              {isOwn && <button className="btn small" style={{ marginTop: 8 }} onClick={() => {
+                const v = prompt("Status (140 chars):", statusTxt ?? ""); if (v === null) return;
+                setThemePatch({ status: v.trim().slice(0, 140) || null } as any);
+              }}>✎ Set status</button>}</> },
+          { k: "dna", name: "Taste DNA", hide: allItems.length === 0 && !isOwn, body: <>{lbl("Taste DNA — the split")}
+              {dna.map((d) => (
+                <div key={d.mt} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+                  <span className="mono" style={{ fontSize: 9, width: 42 }}>{MEDIA_LABELS[d.mt].toUpperCase()}</span>
+                  <span className="progress-bar" style={{ flex: 1, margin: 0 }}><i style={{ width: d.pct + "%", background: `var(--${d.mt})` }} /></span>
+                  <span className="mono faint" style={{ fontSize: 9, width: 30, textAlign: "right" }}>{d.pct}%</span>
+                </div>))}</> },
+          { k: "spaces", name: "Spaces", body: <>{lbl("Spaces")}
+              {isOwn ? (<>
+                {rooms.map((r) => (<Link key={r.room_id} className="btn" style={{ display: "flex", width: "100%", marginBottom: 8 }} to={`/room/${r.room_id}`}>🛋 {r.rooms?.name}</Link>))}
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <Link className="btn small" to="/rooms">🛋 Living rooms</Link>
+                  <Link className="btn small" to="/clubs">📌 Clubs</Link>
+                  <Link className="btn small" to="/gifts">🎁 Gifts</Link>
+                  <Link className="btn small" to="/import">📥 Import</Link>
+                </div></>) : (<p className="faint" style={{ fontSize: 13 }}>Rooms are member-only spaces. Clubs are public — <Link to="/clubs">browse them</Link>.</p>)}</> },
+          { k: "guestbook", name: "Guestbook", wide: true, body: <>{lbl("Guestbook — one page per visitor")}<Guestbook ownerId={p.id} /></> },
+        ];
+        const REGMAP: Record<string, any> = {}; REG.forEach((m) => (REGMAP[m.k] = m));
+        const GRIP = <svg className="ic" viewBox="0 0 24 24" style={{ width: 13, height: 13 }}><circle cx="8" cy="5" r="1.4" /><circle cx="16" cy="5" r="1.4" /><circle cx="8" cy="12" r="1.4" /><circle cx="16" cy="12" r="1.4" /><circle cx="8" cy="19" r="1.4" /><circle cx="16" cy="19" r="1.4" /></svg>;
+        const XIC = <svg className="ic" viewBox="0 0 24 24" style={{ width: 13, height: 13 }}><path d="M18 6 6 18M6 6l12 12" /></svg>;
+        return (<>
+          {editing && isOwn && (
+            <div className="card edit-banner">
+              <span style={{ fontSize: 13.5 }}><b>Edit mode</b> — drag modules to rearrange, ✕ to remove, add more from the tray at the bottom.</span>
+              <button className="btn primary small" onClick={() => setEditing(false)}>Done</button>
+            </div>)}
+          <div className="pgrid">
+            {order.map((k) => {
+              const m = REGMAP[k];
+              if (!m || mods[k] === false || m.hide) return null;
+              return (
+                <div key={k} className={"pmod" + (m.wide ? " wide" : "") + (dragK === k ? " dragging" : "")}
+                  draggable={editing && !!isOwn}
+                  onDragStart={(e) => { if (!editing || !isOwn) return; setDragK(k); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", ""); } catch {} }}
+                  onDragOver={(e) => {
+                    if (!dragK || dragK === k) return; e.preventDefault();
+                    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    const before = e.clientY < r.top + r.height / 2;
+                    setOrder((o) => { const x = o.filter((z) => z !== dragK); const i = x.indexOf(k); x.splice(before ? i : i + 1, 0, dragK); return [...x]; });
+                  }}
+                  onDragEnd={() => { if (dragK) { setDragK(null); setThemePatch({ module_order: orderRef.current } as any); } }}>
+                  {isOwn && (
+                    <div className="mod-tools">
+                      <button className="grab" aria-label="Drag to move module">{GRIP}</button>
+                      <button className="rm" aria-label="Remove module" onClick={() => { setThemePatch({ modules: { ...mods, [k]: false } } as any); toast(`${m.name} moved to the tray.`); }}>{XIC}</button>
+                    </div>)}
+                  {m.body}
+                </div>);
+            })}
           </div>
-        )}
-
-        {show("connections") && connections.length > 0 && (
-          <div className="card pad pmod">
-            <div className="section-label">Elsewhere</div>
-            <div className="badge-row">
-              {connections.map((c) => (
-                <span key={c.provider} className="conn-chip" title={c.provider}>
-                  <i>{CONN_ICON[c.provider] ?? CONN_ICON.other}</i>{c.external_username}
-                  <span className="mono">{c.provider.toUpperCase()}</span>
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {show("reviews") && <div className="card pad pmod">
-          <div className="section-label">Recent reviews</div>
-          {recentReviews.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing reviewed yet.</p>}
-          {recentReviews.map((rv) => (
-            <Link key={rv.id} to={`/m/${rv.media_items?.id}`} style={{ display: "flex", gap: 12, alignItems: "center", padding: "9px 0", color: "var(--text)", textDecoration: "none" }}>
-              <Cover url={rv.media_items?.cover_url} title={rv.media_items?.title ?? "?"} style={{ width: 36, height: 50, flex: "none", padding: 4 }} />
-              <span style={{ flex: 1, minWidth: 0 }}>
-                <b style={{ display: "block", fontSize: 13.5 }}>{rv.media_items?.title}</b>
-                <span className="faint" style={{ fontSize: 11.5, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{rv.body_md}</span>
-              </span>
-            </Link>
-          ))}
-        </div>}
-
-        {show("badges") && <div className="card pad pmod">
-          <div className="section-label">Badges</div>
-          {badges.length === 0 && <p className="faint" style={{ fontSize: 13 }}>None yet — shelve, review, rate, repeat.</p>}
-          <div className="badge-row">
-            {badges.map((b: any) => (
-              <span key={b.badges?.slug} className="badge-chip" title={b.badges?.description}>
-                <i>{b.badges?.icon}</i>{b.badges?.name}
-              </span>
-            ))}
-          </div>
-        </div>}
-
-        {show("spaces") && <div className="card pad pmod">
-          <div className="section-label">Spaces</div>
-          {isOwn ? (
-            <>
-              {rooms.map((r) => (
-                <Link key={r.room_id} className="btn" style={{ display: "flex", width: "100%", marginBottom: 8 }} to={`/room/${r.room_id}`}>🛋 {r.rooms?.name}</Link>
-              ))}
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Link className="btn small" to="/rooms">🛋 Living rooms</Link>
-                <Link className="btn small" to="/clubs">📌 Clubs</Link>
-                <Link className="btn small" to="/gifts">🎁 Gifts</Link>
-                <Link className="btn small" to="/import">📥 Import</Link>
+          {isOwn && (
+            <div className="mod-tray">
+              <div className="section-label" style={{ marginBottom: 0 }}>Add a module</div>
+              <div className="tray-chips">
+                {REG.filter((m) => mods[m.k] === false).map((m) => (
+                  <button key={m.k} className="tray-chip" onClick={() => { setThemePatch({ modules: { ...mods, [m.k]: true } } as any); toast(`${m.name} added to your profile.`); }}>＋ {m.name}</button>))}
+                {REG.every((m) => mods[m.k] !== false) && <span className="faint" style={{ fontSize: 12 }}>Everything's on the board.</span>}
               </div>
-            </>
-          ) : (
-            <p className="faint" style={{ fontSize: 13 }}>Rooms are member-only spaces. Clubs are public — <Link to="/clubs">browse them</Link>.</p>
-          )}
-        </div>}
+            </div>)}
+        </>);
+      })()}
 
-        {show("canvas") && <div className="pmod wide">
-          <div className="section-label">The canvas</div>
-          <Canvas ownerId={p.id} editable={!!isOwn && !!session} />
-        </div>}
+      {pickingTop && (() => {
+        const uniq: any[] = []; const seen = new Set<string>();
+        Object.values(items).flat().forEach((it: any) => { if (!seen.has(it.media_item_id)) { seen.add(it.media_item_id); uniq.push(it); } });
+        const cur = new Set<string>(((t.top_shelf as string[]) ?? []));
+        return (
+          <Modal open onClose={() => setPickingTop(false)} width={560}>
+            <h3>Top shelf</h3>
+            <p className="sub">Up to six all-timers, in pride of place. Tap to toggle.</p>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", maxHeight: 360, overflowY: "auto" }}>
+              {uniq.map((it: any) => { const on = cur.has(it.media_item_id); return (
+                <button key={it.media_item_id} style={{ width: 76 }} onClick={() => {
+                  const next = new Set(cur);
+                  if (on) next.delete(it.media_item_id);
+                  else { if (next.size >= 6) return toast("Six. It's a top shelf, not the whole shop."); next.add(it.media_item_id); }
+                  setThemePatch({ top_shelf: [...next] } as any);
+                }}>
+                  <Cover url={it.media_variants?.cover_url ?? it.media_items?.cover_url} title={it.media_items?.title}
+                    style={{ aspectRatio: it.media_items?.media_type === "music" ? "1" : "2/3", border: on ? "2px solid var(--accent)" : "2px solid transparent" }} />
+                </button>); })}
+              {uniq.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Shelve some things first — your public shelves feed this.</p>}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}><button className="btn primary" onClick={() => setPickingTop(false)}>Done</button></div>
+          </Modal>);
+      })()}
 
-        {show("guestbook") && <div className="pmod wide">
-          <div className="section-label">Guestbook — one page per visitor</div>
-          <Guestbook ownerId={p.id} />
-        </div>}
-      </div>
       {gift === "bag" && <SendBagModal recipient={{ id: p.id, username: p.username }} onClose={() => setGift(null)} />}
       {gift === "wrap" && <SendWrapModal recipient={{ id: p.id, username: p.username }} onClose={() => setGift(null)} />}
     </main>
