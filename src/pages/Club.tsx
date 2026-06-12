@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { supabase, notify } from "../lib/supabase";
 import { useApp } from "../lib/app";
 import { Modal, Spinner, Empty } from "../components/ui";
+import { ReportButton } from "../components/Report";
 
 /* ============ /clubs — the corkboard index ============ */
 export default function ClubsIndex() {
@@ -79,6 +80,7 @@ export function ClubPage() {
   const [members, setMembers] = useState<any[]>([]);
   const [posts, setPosts] = useState<any[]>([]);
   const [bulletins, setBulletins] = useState<any[]>([]);
+  const [reports, setReports] = useState<any[]>([]);
   const [body, setBody] = useState("");
   const [bullTitle, setBullTitle] = useState("");
 
@@ -98,6 +100,23 @@ export function ClubPage() {
     setMembers((mm as any[]) ?? []); setPosts((pp as any[]) ?? []); setBulletins((bb as any[]) ?? []);
   }
   useEffect(() => { load(); }, [slug]);
+
+  useEffect(() => {
+    (async () => {
+      if (!club?.id || !isMod) { setReports([]); return; }
+      const { data: reps } = await supabase.from("reports").select("*")
+        .eq("target_kind", "club_post").eq("status", "open")
+        .order("created_at", { ascending: false }).limit(20);
+      if (!reps?.length) { setReports([]); return; }
+      const ids = (reps as any[]).map((r) => r.target_id);
+      const { data: ps } = await supabase.from("club_posts")
+        .select("id, body_md, author_id, removed_by, author:profiles!club_posts_author_id_fkey(username)")
+        .eq("club_id", club.id).in("id", ids);
+      const byId: Record<string, any> = {};
+      ((ps as any[]) ?? []).forEach((p) => (byId[p.id] = p));
+      setReports((reps as any[]).filter((r) => byId[r.target_id]).map((r) => ({ ...r, post: byId[r.target_id] })));
+    })();
+  }, [club?.id, members.length, session?.user?.id]);
 
   if (club === undefined) return <main className="app"><Spinner /></main>;
   if (club === null) return <main className="app"><Empty>No club at this address. <Link to="/clubs">Back to the board.</Link></Empty></main>;
@@ -127,6 +146,13 @@ export function ClubPage() {
     else await supabase.from("club_post_likes").insert({ post_id: p.id, user_id: session.user.id });
     load();
   }
+  async function resolveReport(r: any, status: string) {
+    const { error } = await supabase.from("reports").update({ status }).eq("id", r.id);
+    if (error) return toast("Run PENDING.sql first — the mod inbox needs migration 00006.");
+    setReports(reports.filter((x) => x.id !== r.id));
+    toast(status === "dismissed" ? "Dismissed. Not everything is a crime." : "Marked actioned. The board thanks you.");
+  }
+
   async function removePost(p: any) {
     await supabase.from("club_posts").update({ removed_by: session!.user.id }).eq("id", p.id);
     toast("Post removed (soft) — author can still see it.");
@@ -170,6 +196,7 @@ export function ClubPage() {
                 <button className={"react" + (p.club_post_likes?.some((l: any) => l.user_id === session?.user?.id) ? " on" : "")}
                   onClick={() => like(p)}>♥ {(p.club_post_likes ?? []).length}</button>
                 {isMod && !p.removed_by && <button className="react" onClick={() => removePost(p)}>🛡 remove</button>}
+                <ReportButton targetKind="club_post" targetId={p.id} small />
               </div>
             </div>
           ))}
@@ -191,6 +218,27 @@ export function ClubPage() {
               </div>
             )}
           </div>
+          {isMod && reports.length > 0 && (
+            <div className="card pad" style={{ marginBottom: 14 }}>
+              <div className="section-label">Reports — mod inbox</div>
+              {reports.map((r) => (
+                <div key={r.id} style={{ padding: "9px 0", borderBottom: "1px solid var(--stroke)" }}>
+                  <p style={{ fontSize: 12.5, lineHeight: 1.5 }}>
+                    <b>🚩 {r.reason}</b>{r.details && <span className="muted"> — {r.details}</span>}
+                  </p>
+                  <p className="muted" style={{ fontSize: 12, margin: "4px 0 7px" }}>
+                    on @{r.post?.author?.username}: “{(r.post?.body_md ?? "").slice(0, 90)}{(r.post?.body_md ?? "").length > 90 ? "…" : ""}”
+                    {r.post?.removed_by && <span className="mono faint" style={{ fontSize: 9 }}> · ALREADY REMOVED</span>}
+                  </p>
+                  <span style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {!r.post?.removed_by && <button className="btn small" onClick={async () => { await removePost(r.post); await resolveReport(r, "actioned"); }}>Remove post</button>}
+                    <button className="btn small" onClick={() => resolveReport(r, "actioned")}>Actioned</button>
+                    <button className="btn small" onClick={() => resolveReport(r, "dismissed")}>Dismiss</button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="card pad">
             <div className="section-label">{members.length} member{members.length === 1 ? "" : "s"}</div>
             {members.map((m) => (
@@ -198,6 +246,14 @@ export function ClubPage() {
                 <span className="mini-ava">{(m.profiles?.username ?? "?")[0]?.toUpperCase()}</span>
                 <Link to={`/u/${m.profiles?.username}`} style={{ color: "var(--text)", fontSize: 13.5, fontWeight: 600, flex: 1 }}>@{m.profiles?.username}</Link>
                 {m.role !== "member" && <span className="chip">{m.role.toUpperCase()}</span>}
+                {me?.role === "owner" && m.role !== "owner" && (
+                  <button className="btn small" onClick={async () => {
+                    const next = m.role === "mod" ? "member" : "mod";
+                    const { error } = await supabase.from("club_members").update({ role: next }).eq("club_id", club.id).eq("user_id", m.user_id);
+                    toast(error ? "Run migration 00005 first — role changes need it." : next === "mod" ? `@${m.profiles?.username} is a mod now. Power responsibly.` : "Back to member.");
+                    load();
+                  }}>{m.role === "mod" ? "demote" : "make mod"}</button>
+                )}
               </div>
             ))}
           </div>

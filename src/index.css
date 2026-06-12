@@ -83,6 +83,8 @@ body[data-frame="gradient"] .card{border:1.5px solid transparent;
 .btn.small{padding:7px 13px;font-size:12.5px}
 .btn.danger{color:#ff6b5e;border-color:color-mix(in srgb,#ff6b5e 40%,transparent)}
 .btn:disabled{opacity:.5;cursor:default}
+a.btn,a.btn:hover{text-decoration:none;color:var(--text)}
+a.btn.primary,a.btn.primary:hover{color:var(--accent-ink)}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;border:1px solid var(--stroke);
   font-family:var(--font-mono);font-size:10.5px;letter-spacing:.06em;color:var(--text-2)}
 .icon-btn{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
@@ -645,3 +647,35 @@ footer.note img{height:11px;vertical-align:middle;margin:0 4px}
 .sprite{position:absolute;bottom:50px;z-index:3;font-size:23px;filter:drop-shadow(0 4px 4px rgba(0,0,0,.4));
   cursor:pointer;transition:transform .3s var(--spring);transform:translateX(-50%)}
 .sprite:hover{transform:translateX(-50%) translateY(-5px) rotate(-8deg)}
+
+/* parity pass: connections, comments, locked finishes */
+.conn-chip{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:12px;background:var(--surface-2);
+  border:1px solid var(--stroke);font-size:12.5px;font-weight:600;transition:transform .25s var(--spring)}
+.conn-chip:hover{transform:translateY(-2px)}
+.conn-chip i{font-style:normal}
+.conn-chip .mono{font-size:9.5px;color:var(--text-3)}
+.theme-card.locked{opacity:.55;position:relative}
+.theme-card.locked::after{content:"🔒";position:absolute;top:8px;right:10px;font-size:12px}
+.cmt{display:flex;align-items:flex-start;gap:9px;padding:8px 0 8px 12px;border-left:2px solid var(--stroke)}
+.cmt .body{flex:1;font-size:13px;line-height:1.55}
+.cmt .body b{font-size:12.5px;margin-right:6px}
+.cmt time{font-family:var(--font-mono);font-size:8.5px;color:var(--text-3)}
+.rot-row{display:flex;align-items:center;gap:10px;padding:8px 0}
+.rot-row .nfo{flex:1;min-width:0}
+.rot-row .nfo b{display:block;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* room arrange mode */
+.room2.editing{touch-action:none}
+.room2.editing button,.room2.editing .r2-plant{cursor:grab !important;outline:1.5px dashed rgba(255,255,255,.4);outline-offset:4px}
+.room2.editing button:hover{filter:none}
+.room2.editing .r2-plant{pointer-events:auto}
+.room2.editing button:active,.room2.editing .r2-plant:active{cursor:grabbing !important;outline-color:var(--accent)}
+
+/* guestbook page turn */
+.gbook{perspective:1300px}
+.gb-pg{backface-visibility:hidden}
+.gbook.turn-next .gb-pg:nth-child(2){transform-origin:left center;animation:pgNext .33s ease-in forwards}
+.gbook.turn-prev .gb-pg:nth-child(1){transform-origin:right center;animation:pgPrev .33s ease-in forwards}
+@keyframes pgNext{0%{transform:rotateY(0)}100%{transform:rotateY(-86deg)}}
+@keyframes pgPrev{0%{transform:rotateY(0)}100%{transform:rotateY(86deg)}}
+@media(max-width:560px){.gbook.turn-next .gb-pg,.gbook.turn-prev .gb-pg{animation:none}}

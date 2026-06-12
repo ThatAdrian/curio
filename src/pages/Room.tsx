@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { supabase, notify } from "../lib/supabase";
 import { useApp } from "../lib/app";
@@ -101,6 +101,28 @@ export function RoomPage() {
   const [overlap, setOverlap] = useState<any[]>([]);
   const [panel, setPanel] = useState<string | null>(null);
   const [invitee, setInvitee] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [layL, setLayL] = useState<Record<string, { l: number; b?: number; t?: number }>>({});
+  const dragF = useRef<{ k: string; top: boolean } | null>(null);
+  const roomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => { setLayL(((room?.state as any)?.furniture_layout ?? {}) as any); }, [room?.id, JSON.stringify((room?.state as any)?.furniture_layout)]);
+  const DEFAULTS: Record<string, { l: number; b?: number; t?: number }> = {
+    shelf: { l: 4, b: 24 }, media: { l: 30, b: 26 }, side: { l: 75, b: 23 },
+    couch: { l: 23, b: 6 }, table: { l: 36, b: 1.5 }, lamp: { l: 88, b: 5 },
+    plant: { l: 1.5, b: 4 }, poster: { l: 7, t: 16 },
+  };
+  const fStyle = (k: string): React.CSSProperties => {
+    const o = layL[k] ?? DEFAULTS[k];
+    return { left: o.l + "%", right: "auto", ...(o.t !== undefined ? { top: o.t + "%", bottom: "auto" } : { bottom: (o.b ?? 5) + "%", top: "auto" }) };
+  };
+  const fDown = (k: string) => (e: React.PointerEvent) => {
+    if (!editMode) return;
+    e.preventDefault(); e.stopPropagation();
+    dragF.current = { k, top: DEFAULTS[k].t !== undefined };
+    roomRef.current?.setPointerCapture(e.pointerId);
+  };
+  const fClick = (fn: () => void) => () => { if (!editMode) fn(); };
 
   const meMember = members.find((m) => m.user_id === session?.user?.id);
   const isOwner = meMember?.role === "owner";
@@ -238,6 +260,40 @@ export function RoomPage() {
         {state.spinning ? "Lift the needle" : "Drop the needle"}
       </button>
     </>,
+    poster: <>
+      <h4>Movie night</h4>
+      <p className="psub">The poster doubles as the events board for this room.</p>
+      {state.event ? (
+        <div className="proom-row">
+          <div className="nfo">
+            <b>{state.event.title}</b>
+            <span>{state.event.when} · {(state.event.going ?? []).length} going</span>
+          </div>
+        </div>
+      ) : <p className="faint" style={{ fontSize: 13 }}>Nothing planned. The poster waits.</p>}
+      <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+        {state.event ? (
+          <>
+            <button className="btn small primary" onClick={() => {
+              const me2 = session!.user.id;
+              const going = new Set(state.event.going ?? []);
+              going.has(me2) ? going.delete(me2) : going.add(me2);
+              setState({ event: { ...state.event, going: [...going] } });
+              toast(going.has(me2) ? "You're going. Attendance legally binding." : "Backed out. The popcorn forgives.");
+            }}>{(state.event.going ?? []).includes(session?.user?.id) ? "✓ Going" : "I'm in"}</button>
+            <button className="btn small" onClick={() => { setState({ event: null }); toast("Event cleared. The poster reverts to ambience."); }}>Clear</button>
+          </>
+        ) : (
+          <button className="btn small primary" onClick={() => {
+            const title = prompt("What are we watching?");
+            if (!title) return;
+            const when = prompt("When? (e.g. Friday 20:00)") ?? "soon";
+            setState({ event: { title, when, going: [session!.user.id] } });
+            toast("Proposed. Everyone in the room sees the poster change.");
+          }}>Propose a night</button>
+        )}
+      </div>
+    </>,
     couch: <>
       <h4>Room members</h4>
       <p className="psub">Who shares this space.</p>
@@ -263,44 +319,68 @@ export function RoomPage() {
         <div>
           <Link to="/rooms" className="mono faint" style={{ fontSize: 10 }}>← YOUR ROOMS</Link>
           <h1>🛋 {room.name}</h1>
-          <p>{members.length} member{members.length === 1 ? " · private, just you" : "s · co-curated"} — click anything, the room is the menu.</p>
+          <p>{members.length} member{members.length === 1 ? " · private, just you" : "s · co-curated"} — {editMode ? "drag the furniture; everyone sees the new arrangement" : "click anything, the room is the menu."}</p>
         </div>
+        <span style={{ display: "flex", gap: 8 }}>
+          {editMode && Object.keys(layL).length > 0 && (
+            <button className="btn small" onClick={() => { setLayL({}); setState({ furniture_layout: null }); toast("Furniture reset. Feng shui restored to factory."); }}>Reset</button>
+          )}
+          <button className={"btn small" + (editMode ? " primary" : "")} onClick={() => { setEditMode(!editMode); setPanel(null); if (!editMode) toast("Arrange mode — drag anything. The cat is not furniture."); }}>
+            {editMode ? "✓ Done arranging" : "🛠 Arrange"}
+          </button>
+        </span>
       </div>
 
-      <div className={"room2" + (state.dim ? " dim" : "")}>
+      <div ref={roomRef} className={"room2" + (state.dim ? " dim" : "") + (editMode ? " editing" : "")}
+        onPointerMove={(e) => {
+          const d = dragF.current, r = roomRef.current?.getBoundingClientRect();
+          if (!d || !r) return;
+          const l = Math.max(0, Math.min(90, ((e.clientX - r.left) / r.width) * 100));
+          const next = { ...layL };
+          if (d.top) next[d.k] = { l, t: Math.max(2, Math.min(55, ((e.clientY - r.top) / r.height) * 100)) };
+          else next[d.k] = { l, b: Math.max(0, Math.min(72, ((r.bottom - e.clientY) / r.height) * 100)) };
+          setLayL(next);
+        }}
+        onPointerUp={() => {
+          if (!dragF.current) return;
+          dragF.current = null;
+          setState({ furniture_layout: layL });
+        }}
+        onPointerCancel={() => { dragF.current = null; }}>
         <div className="r2-wall">
           <div className="r2-stringlights"><i /><i /><i /><i /><i /><i /><i /><i /></div>
           <div className="r2-window"><i className="moon" /><i className="bar-v" /><i className="bar-h" /><span className="curtain cl" /><span className="curtain cr" /></div>
-          <div className="r2-poster pa"><span>BR<br />2049</span></div>
+          <button className="r2-poster pa" title="events board" onClick={fClick(() => setPanel("poster"))} onPointerDown={fDown("poster")} style={{ border: "none", cursor: "pointer", ...fStyle("poster") }}><span>{state.event ? "TONIGHT" : "BR"}<br />{state.event ? "🍿" : "2049"}</span></button>
           <div className="r2-wainscot" />
         </div>
         <div className="r2-floor" />
         <div className="r2-rug" />
-        <button className="r2-shelf" title="the shared shelf" onClick={() => setPanel("shelf")}>
+        <button className="r2-shelf" title="the shared shelf" onClick={fClick(() => setPanel("shelf"))} onPointerDown={fDown("shelf")} style={fStyle("shelf")}>
           <i className="rrow" /><i className="rrow" /><i className="rrow" /><span className="r2-label">SHARED</span>
         </button>
-        <button className={"r2-media" + (state.tv_on ? " on" : "")} title="the telly" onClick={() => setPanel("tv")}>
+        <button className={"r2-media" + (state.tv_on ? " on" : "")} title="the telly" onClick={fClick(() => setPanel("tv"))} onPointerDown={fDown("media")} style={fStyle("media")}>
           <span className="crt"><span className="screen" /><i className="knob" /><i className="knob k2" /></span>
           <span className="cab"><i className="console" /><i className="pad" /><i className="pad p2" /></span>
         </button>
-        <button className={"r2-side" + (state.spinning ? " spinning" : "")} title="record corner" onClick={() => setPanel("player")}>
+        <button className={"r2-side" + (state.spinning ? " spinning" : "")} title="record corner" onClick={fClick(() => setPanel("player"))} onPointerDown={fDown("side")} style={fStyle("side")}>
           <span className="deck"><i className="platter" /><i className="arm" /></span>
           <span className="crate"><i /><i /><i /><i /></span>
         </button>
-        <button className="r2-couch" title="the couch · members" onClick={() => setPanel("couch")}>
+        <button className="r2-couch" title="the couch · members" onClick={fClick(() => setPanel("couch"))} onPointerDown={fDown("couch")} style={fStyle("couch")}>
           <i className="back" /><i className="arm al" /><i className="arm ar" />
           <i className="cush c1" /><i className="cush c2" /><i className="blanket" />
           <span className="r2-cat" title="the room's cat" onClick={(e) => { e.stopPropagation(); toast("The cat ignores you all equally. Shared custody."); }}>🐈‍⬛</span>
         </button>
-        <button className="r2-table" title="the borrowed pile" onClick={() => setPanel("table")}>
+        <button className="r2-table" title="the borrowed pile" onClick={fClick(() => setPanel("table"))} onPointerDown={fDown("table")} style={fStyle("table")}>
           <i className="top" /><i className="base" />
           <span className="pile p1" /><span className="pile p2" /><span className="pile p3" />
           <span className="mug m1" /><span className="mug m2" />
         </button>
-        <button className="r2-lamp" title="mood lighting" onClick={() => { setState({ dim: !state.dim }); toast(state.dim ? "Lights up. The room pretends to be productive." : "Lights low. Slow cinema hours."); }}>
+        <button className="r2-lamp" title="mood lighting" onPointerDown={fDown("lamp")} style={fStyle("lamp")}
+          onClick={fClick(() => { setState({ dim: !state.dim }); toast(state.dim ? "Lights up. The room pretends to be productive." : "Lights low. Slow cinema hours."); })}>
           <i className="pole" /><i className="shade" /><i className="glow" />
         </button>
-        <div className="r2-plant"><i className="pot" /><i className="leaves" /></div>
+        <div className="r2-plant" onPointerDown={fDown("plant")} style={fStyle("plant")}><i className="pot" /><i className="leaves" /></div>
 
         {panel && (
           <aside className="room-panel">

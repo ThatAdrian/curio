@@ -4,6 +4,7 @@ import { supabase, notify, MEDIA_LABELS, MediaType } from "../lib/supabase";
 import { useApp } from "../lib/app";
 import { Cover, Stars, Modal, Spinner, Empty } from "../components/ui";
 import { addToWatchLater } from "../lib/extras";
+import { ReportButton } from "../components/Report";
 
 export default function MediaPage() {
   const { id } = useParams();
@@ -16,6 +17,9 @@ export default function MediaPage() {
   const [body, setBody] = useState("");
   const [spoiler, setSpoiler] = useState(false);
   const [revealed, setRevealed] = useState<Set<string>>(new Set());
+  const [openCmts, setOpenCmts] = useState<Set<string>>(new Set());
+  const [cmts, setCmts] = useState<Record<string, any[]>>({});
+  const [cmtDraft, setCmtDraft] = useState<Record<string, string>>({});
   const [picking, setPicking] = useState(false);
   const [variants, setVariants] = useState<any[]>([]);
   const [myItems, setMyItems] = useState<any[]>([]);
@@ -30,7 +34,7 @@ export default function MediaPage() {
     const { data: st } = await supabase.from("media_stats").select("*").eq("media_item_id", id).maybeSingle();
     setStats(st);
     const { data: rv } = await supabase.from("reviews")
-      .select("*, author:profiles!reviews_user_id_fkey(username, display_name), review_likes(user_id)")
+      .select("*, author:profiles!reviews_user_id_fkey(username, display_name), review_likes(user_id), review_comments(count)")
       .eq("media_item_id", id).eq("status", "published").order("published_at", { ascending: false }).limit(30);
     setReviews((rv as any[]) ?? []);
     if (session?.user) {
@@ -102,6 +106,30 @@ export default function MediaPage() {
     load();
   }
 
+  async function toggleCmts(rvId: string) {
+    const next = new Set(openCmts);
+    if (next.has(rvId)) { next.delete(rvId); setOpenCmts(next); return; }
+    next.add(rvId); setOpenCmts(next);
+    const { data } = await supabase.from("review_comments")
+      .select("*, author:profiles!review_comments_user_id_fkey(username)")
+      .eq("review_id", rvId).order("created_at");
+    setCmts({ ...cmts, [rvId]: (data as any[]) ?? [] });
+  }
+  async function postCmt(rv: any) {
+    const body = (cmtDraft[rv.id] ?? "").trim();
+    if (!body || !session?.user) return;
+    const { error } = await supabase.from("review_comments").insert({ review_id: rv.id, user_id: session.user.id, body_md: body });
+    if (error) return toast(error.message);
+    notify(rv.user_id, "review_comment", { review_id: rv.id, media_title: media.title });
+    setCmtDraft({ ...cmtDraft, [rv.id]: "" });
+    setReviews(reviews.map((r) => r.id === rv.id
+      ? { ...r, review_comments: [{ count: (r.review_comments?.[0]?.count ?? 0) + 1 }] } : r));
+    const { data } = await supabase.from("review_comments")
+      .select("*, author:profiles!review_comments_user_id_fkey(username)")
+      .eq("review_id", rv.id).order("created_at");
+    setCmts({ ...cmts, [rv.id]: (data as any[]) ?? [] });
+  }
+
   async function logDiary() {
     if (!session?.user) return toast("Sign in first.");
     await supabase.from("diary_entries").insert({ user_id: session.user.id, media_item_id: id });
@@ -129,6 +157,24 @@ export default function MediaPage() {
             {profile && <button className="btn primary" onClick={() => setPicking(true)}>+ Shelve it</button>}
             {profile && <button className="btn" onClick={logDiary}>📔 Log to diary</button>}
             {profile && <button className="btn" onClick={async () => { try { toast(await addToWatchLater(id!)); } catch (e: any) { toast(e.message); } }}>🕐 Watch later</button>}
+            {media.media_type === "book" && (
+              <a className="btn" target="_blank" rel="noreferrer" href={`https://openlibrary.org/works/${media.external_id}`}>📖 Read online</a>
+            )}
+            {media.media_type === "music" && (
+              <a className="btn" target="_blank" rel="noreferrer"
+                href={`https://music.youtube.com/search?q=${encodeURIComponent(((media.creators?.[0]?.name ?? "") + " " + media.title).trim())}`}>🎧 Listen</a>
+            )}
+            {(media.media_type === "film" || media.media_type === "tv") && (
+              <a className="btn" target="_blank" rel="noreferrer"
+                href={`https://www.themoviedb.org/${media.media_type === "film" ? "movie" : "tv"}/${media.external_id}`}>ℹ TMDB</a>
+            )}
+            {media.media_type === "game" && (
+              <>
+                <a className="btn" target="_blank" rel="noreferrer"
+                  href={`https://www.xbox.com/en-GB/play/search?q=${encodeURIComponent(media.title)}`}>☁ Xbox Cloud</a>
+                <a className="btn" target="_blank" rel="noreferrer" href="https://play.geforcenow.com">☁ GeForce NOW</a>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -226,7 +272,41 @@ export default function MediaPage() {
                 <button className={"react" + (liked ? " on" : "")} onClick={() => toggleLike(rv)}>
                   ♥ {(rv.review_likes ?? []).length}
                 </button>
+                <button className="react" onClick={() => toggleCmts(rv.id)}>
+                  💬 {rv.review_comments?.[0]?.count ?? 0}
+                </button>
+                <ReportButton targetKind="review" targetId={rv.id} small />
               </div>
+              {openCmts.has(rv.id) && (
+                <div style={{ marginTop: 10 }}>
+                  {(cmts[rv.id] ?? []).map((c) => (
+                    <div key={c.id} className="cmt">
+                      <span className="body">
+                        <Link to={`/u/${c.author?.username}`} style={{ color: "var(--text)" }}><b>@{c.author?.username}</b></Link>
+                        {c.body_md} <time>{new Date(c.created_at).toLocaleDateString()}</time>
+                      </span>
+                      {c.user_id === session?.user?.id && (
+                        <button className="icon-btn" style={{ width: 22, height: 22, fontSize: 10 }}
+                          onClick={async () => {
+                            await supabase.from("review_comments").delete().eq("id", c.id);
+                            setCmts({ ...cmts, [rv.id]: cmts[rv.id].filter((x) => x.id !== c.id) });
+                            setReviews(reviews.map((r) => r.id === rv.id
+                              ? { ...r, review_comments: [{ count: Math.max(0, (r.review_comments?.[0]?.count ?? 1) - 1) }] } : r));
+                          }}>✕</button>
+                      )}
+                    </div>
+                  ))}
+                  {profile && (
+                    <div style={{ display: "flex", gap: 7, marginTop: 8 }}>
+                      <input className="input" style={{ borderRadius: 999, padding: "8px 14px", fontSize: 13 }}
+                        value={cmtDraft[rv.id] ?? ""} placeholder="Reply…"
+                        onChange={(e) => setCmtDraft({ ...cmtDraft, [rv.id]: e.target.value })}
+                        onKeyDown={(e) => e.key === "Enter" && postCmt(rv)} />
+                      <button className="btn small" onClick={() => postCmt(rv)}>Reply</button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           );
         })}

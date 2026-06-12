@@ -5,11 +5,11 @@ import { supabase } from "./supabase";
 export type Theme = {
   theme?: string; accent?: string; radius?: number; frame?: string;
   avshape?: string; avdeco?: string; banner?: string;
-  canvas_surface?: string; shelfskin?: string;
+  canvas_surface?: string; shelfskin?: string; modules?: Record<string, boolean>;
 };
 export type Profile = {
   id: string; username: string; display_name: string | null; bio: string | null;
-  avatar_url: string | null; is_verified: boolean; visibility: string; theme: Theme;
+  avatar_url: string | null; is_verified: boolean; visibility: string; theme: Theme; prefs?: Record<string, any>;
 };
 
 type Ctx = {

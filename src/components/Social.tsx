@@ -149,6 +149,8 @@ export function Guestbook({ ownerId }: { ownerId: string }) {
   const [text, setText] = useState("");
   const [armed, setArmed] = useState<string | null>(null);
   const [placeable, setPlaceable] = useState<string | null>(null); // entry id you may stamp
+  const [spread, setSpread] = useState(0);
+  const [turn, setTurn] = useState<"next" | "prev" | null>(null);
 
   async function load() {
     const { data } = await supabase.from("guestbook_entries")
@@ -165,6 +167,7 @@ export function Guestbook({ ownerId }: { ownerId: string }) {
     if (error) { toast(error.message); return; }
     setText("");
     setPlaceable(data.id);
+    setSpread(0);
     notify(ownerId, "guestbook_signed", { entry_id: data.id });
     toast("Page signed. Now arm a stamp and click your page to place it.");
     load();
@@ -196,10 +199,20 @@ export function Guestbook({ ownerId }: { ownerId: string }) {
     load();
   }
 
+  const spreads = Math.max(1, Math.ceil(entries.length / 2));
+  const visible = entries.slice(spread * 2, spread * 2 + 2);
+  function flip(dir: "next" | "prev") {
+    if (turn) return;
+    if (dir === "next" && spread >= spreads - 1) return;
+    if (dir === "prev" && spread <= 0) return;
+    setTurn(dir);
+    setTimeout(() => { setSpread((p) => dir === "next" ? p + 1 : p - 1); setTurn(null); }, 330);
+  }
+
   return (
     <div>
-      <div className="gbook">
-        {entries.map((en) => (
+      <div className={"gbook" + (turn ? " turn-" + turn : "")}>
+        {visible.map((en) => (
           <div key={en.id} className={"gb-pg" + (en.id === placeable && armed ? " placeable" : "")}
             onClick={(e) => place(e, en)}>
             <div className="who"><b>{en.author?.username ?? "?"}</b> — {en.body}</div>
@@ -216,7 +229,15 @@ export function Guestbook({ ownerId }: { ownerId: string }) {
           </div>
         ))}
         {entries.length === 0 && <div className="gb-pg"><div style={{ textAlign: "center", paddingTop: 30, fontFamily: "var(--font-mono)", fontSize: 9.5, opacity: 0.5 }}>— BLANK BOOK · SIGN BELOW —</div></div>}
+        {entries.length > 0 && visible.length === 1 && <div className="gb-pg"><div style={{ textAlign: "center", paddingTop: 34, fontFamily: "var(--font-mono)", fontSize: 9, opacity: 0.4 }}>this page intentionally<br />left blank</div></div>}
       </div>
+      {spreads > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 8 }}>
+          <button className="icon-btn" disabled={spread === 0} style={{ opacity: spread === 0 ? 0.3 : 1 }} onClick={() => flip("prev")}>‹</button>
+          <span className="mono faint" style={{ fontSize: 9.5, letterSpacing: ".14em" }}>SPREAD {spread + 1} / {spreads}</span>
+          <button className="icon-btn" disabled={spread >= spreads - 1} style={{ opacity: spread >= spreads - 1 ? 0.3 : 1 }} onClick={() => flip("next")}>›</button>
+        </div>
+      )}
       {profile && (
         <>
           <div className="gb-stkbar">

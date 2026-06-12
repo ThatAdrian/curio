@@ -6,6 +6,7 @@ import { Spinner, Empty, Cover } from "../components/ui";
 import { ShelfRow, ShelfItemRow, ShelfSprites } from "../components/ShelfRow";
 import { Canvas, Guestbook } from "../components/Social";
 import { SendBagModal, SendWrapModal } from "../components/Gifts";
+import { ReportButton } from "../components/Report";
 import { awardBadges } from "../lib/extras";
 
 const UNIT_CLASS: Record<string, string> = { film: "unit-rental", tv: "unit-rental", game: "unit-cab", book: "unit-wood", music: "unit-crate" };
@@ -24,6 +25,8 @@ export default function Profile() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [badges, setBadges] = useState<any[]>([]);
   const [gift, setGift] = useState<"bag" | "wrap" | null>(null);
+  const [connections, setConnections] = useState<any[]>([]);
+  const [blocked, setBlocked] = useState(false);
 
   const isOwn = !username || (myProfile && username === myProfile.username);
 
@@ -75,6 +78,15 @@ export default function Profile() {
       if (!error) setRooms((rm as any[]) ?? []);
     }
 
+    const { data: cx } = await supabase.from("connections").select("provider, external_username")
+      .eq("user_id", prof.id).eq("show_on_profile", true);
+    setConnections((cx as any[]) ?? []);
+    if (session?.user && session.user.id !== prof.id) {
+      const { data: bl } = await supabase.from("blocks").select("blocked_id")
+        .eq("blocker_id", session.user.id).eq("blocked_id", prof.id).maybeSingle();
+      setBlocked(!!bl);
+    }
+
     const { data: ub } = await supabase.from("user_badges").select("earned_at, badges(slug,name,description,icon)").eq("user_id", prof.id);
     setBadges((ub as any[]) ?? []);
     if (session?.user && session.user.id === prof.id) {
@@ -97,6 +109,14 @@ export default function Profile() {
   }
 
   const t = (p.theme ?? {}) as any;
+  const mods = t.modules ?? {};
+  const show = (k: string) => mods[k] !== false;
+  const effMat = (s: any) => (s.material && s.material !== "default") ? s.material : (t.shelfskin && t.shelfskin !== "default" ? t.shelfskin : null);
+  const showPlays = !!isOwn || (p.prefs?.playtime_public === true);
+  const inRotation = Object.values(items).flat()
+    .filter((i: any) => i.completion > 0 && i.completion < 100)
+    .sort((a: any, b: any) => b.completion - a.completion).slice(0, 4);
+  const CONN_ICON: Record<string, string> = { steam: "🎮", discord: "💬", lastfm: "🎧", trakt: "📺", letterboxd: "🎬", backloggd: "🕹️", github: "🐙", other: "🔗" };
   // visitors see the OWNER's avatar styling, not their own
   const shape = t.avshape ?? "squircle";
   const avStyle: React.CSSProperties = {
@@ -137,27 +157,40 @@ export default function Profile() {
                 <button className={"btn small" + (iFollow ? "" : " primary")} onClick={toggleFollow}>{iFollow ? "Following ✓" : "+ Follow"}</button>
                 <button className="btn small" onClick={() => setGift("bag")}>🛍 Bag</button>
                 <button className="btn small" onClick={() => setGift("wrap")}>🎀 Blind date</button>
+                <button className="btn small" onClick={async () => {
+                  if (blocked) {
+                    await supabase.from("blocks").delete().eq("blocker_id", session.user.id).eq("blocked_id", p.id);
+                    setBlocked(false); toast(`Unblocked @${p.username}.`);
+                  } else {
+                    if (!confirm(`Block @${p.username}? They won't be able to see your profile, shelves or guestbook, and you'll unfollow each other.`)) return;
+                    await supabase.from("blocks").insert({ blocker_id: session.user.id, blocked_id: p.id });
+                    await supabase.from("follows").delete().eq("follower_id", session.user.id).eq("followee_id", p.id);
+                    await supabase.from("follows").delete().eq("follower_id", p.id).eq("followee_id", session.user.id);
+                    setBlocked(true); setIFollow(false); toast(`Blocked. They see a closed door now.`);
+                  }
+                }}>{blocked ? "🚫 Unblock" : "🚫 Block"}</button>
+                <ReportButton targetKind="profile" targetId={p.id} />
               </>}
         </div>
       </div>
 
-      <div className="stat-row">
+      {show("stats") && <div className="stat-row">
         {(["film", "tv", "game", "book", "music"] as MediaType[]).map((mt) => (
           <div key={mt} className={`card stat t-${mt}`}>
             <b>{counts[mt] ?? 0}</b><span>{MEDIA_LABELS[mt]}s</span>
           </div>
         ))}
-      </div>
+      </div>}
 
       <div className="pgrid">
         <div className="pmod wide">
           <div className="section-label">{isOwn ? "Your shelves — as visitors see them" : "On the shelves"}</div>
           {shelves.length === 0 && <Empty>{isOwn ? <>Nothing public yet — flip a shelf's 👁 on the <Link to="/shelf">Shelf page</Link>.</> : "Their shelves are private, or empty. Mysterious either way."}</Empty>}
           {shelves.map((s) => (
-            <div key={s.id} className={`shelf-unit ${UNIT_CLASS[s.media_type ?? "book"]}${s.material && s.material !== "default" ? " skin-" + s.material : ""}`} style={{ marginBottom: 18 }}>
+            <div key={s.id} className={`shelf-unit ${UNIT_CLASS[s.media_type ?? "book"]}${effMat(s) ? " skin-" + effMat(s) : ""}`} style={{ marginBottom: 18 }}>
               <span className="unit-label">{s.name.toUpperCase()}</span>
               <div>
-                <ShelfRow items={items[s.id] ?? []} ownerView={!!isOwn} ownerId={p.id} onChanged={load} />
+                <ShelfRow items={items[s.id] ?? []} ownerView={!!isOwn} ownerId={p.id} onChanged={load} showPlays={showPlays} />
                 <ShelfSprites decorations={(s.decorations as any) ?? []} editable={false} />
                 <div className="plank" />
               </div>
@@ -166,7 +199,37 @@ export default function Profile() {
           ))}
         </div>
 
-        <div className="card pad pmod">
+        {show("rotation") && inRotation.length > 0 && (
+          <div className="card pad pmod">
+            <div className="section-label">In rotation — partway through</div>
+            {inRotation.map((it: any) => (
+              <Link key={it.id} to={`/m/${it.media_items?.id}`} className="rot-row" style={{ color: "var(--text)", textDecoration: "none" }}>
+                <span style={{ color: `var(--${it.media_items?.media_type})` }}>●</span>
+                <span className="nfo">
+                  <b>{it.media_items?.title}</b>
+                  <span className="progress-bar" style={{ margin: "5px 0 0" }}><i style={{ width: it.completion + "%" }} /></span>
+                </span>
+                <span className="mono faint" style={{ fontSize: 10 }}>{it.completion}%</span>
+              </Link>
+            ))}
+          </div>
+        )}
+
+        {show("connections") && connections.length > 0 && (
+          <div className="card pad pmod">
+            <div className="section-label">Elsewhere</div>
+            <div className="badge-row">
+              {connections.map((c) => (
+                <span key={c.provider} className="conn-chip" title={c.provider}>
+                  <i>{CONN_ICON[c.provider] ?? CONN_ICON.other}</i>{c.external_username}
+                  <span className="mono">{c.provider.toUpperCase()}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {show("reviews") && <div className="card pad pmod">
           <div className="section-label">Recent reviews</div>
           {recentReviews.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing reviewed yet.</p>}
           {recentReviews.map((rv) => (
@@ -178,9 +241,9 @@ export default function Profile() {
               </span>
             </Link>
           ))}
-        </div>
+        </div>}
 
-        <div className="card pad pmod">
+        {show("badges") && <div className="card pad pmod">
           <div className="section-label">Badges</div>
           {badges.length === 0 && <p className="faint" style={{ fontSize: 13 }}>None yet — shelve, review, rate, repeat.</p>}
           <div className="badge-row">
@@ -190,9 +253,9 @@ export default function Profile() {
               </span>
             ))}
           </div>
-        </div>
+        </div>}
 
-        <div className="card pad pmod">
+        {show("spaces") && <div className="card pad pmod">
           <div className="section-label">Spaces</div>
           {isOwn ? (
             <>
@@ -209,17 +272,17 @@ export default function Profile() {
           ) : (
             <p className="faint" style={{ fontSize: 13 }}>Rooms are member-only spaces. Clubs are public — <Link to="/clubs">browse them</Link>.</p>
           )}
-        </div>
+        </div>}
 
-        <div className="pmod wide">
+        {show("canvas") && <div className="pmod wide">
           <div className="section-label">The canvas</div>
           <Canvas ownerId={p.id} editable={!!isOwn && !!session} />
-        </div>
+        </div>}
 
-        <div className="pmod wide">
+        {show("guestbook") && <div className="pmod wide">
           <div className="section-label">Guestbook — one page per visitor</div>
           <Guestbook ownerId={p.id} />
-        </div>
+        </div>}
       </div>
       {gift === "bag" && <SendBagModal recipient={{ id: p.id, username: p.username }} onClose={() => setGift(null)} />}
       {gift === "wrap" && <SendWrapModal recipient={{ id: p.id, username: p.username }} onClose={() => setGift(null)} />}

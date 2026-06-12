@@ -22,7 +22,7 @@ const UNIT_LABEL: Record<string, string> = {
 };
 
 export default function ShelfPage() {
-  const { session, toast } = useApp();
+  const { session, profile, toast } = useApp();
   const [shelves, setShelves] = useState<Shelf[] | null>(null);
   const [items, setItems] = useState<Record<string, ShelfItemRow[]>>({});
   const [ratings, setRatings] = useState<Record<string, number>>({});
@@ -97,9 +97,11 @@ export default function ShelfPage() {
         </span>
       </div>
 
-      {shelves.map((s) => {
+      {shelves.map((s, idx) => {
         const rows = s.kind === "smart" ? smartItems(s) : sortItems(s, items[s.id] ?? []);
-        const cls = s.material && s.material !== "default" ? ` skin-${s.material}` : "";
+        const defaultSkin = profile?.theme?.shelfskin;
+        const eff = s.material !== "default" ? s.material : (defaultSkin && defaultSkin !== "default" ? defaultSkin : null);
+        const cls = eff ? ` skin-${eff}` : "";
         const t = s.media_type ?? "book";
         return (
           <div key={s.id} className={`shelf-block t-${t}`}>
@@ -107,6 +109,28 @@ export default function ShelfPage() {
               <h3><span className="dot" />{s.name}{s.kind === "smart" && <span className="chip">SMART</span>}</h3>
               <span className="count">{rows.length} shelved</span>
               <span className="shelf-ctrl">
+                <button className="icon-btn" title="Rename shelf" onClick={() => {
+                  const n = prompt("New name for this shelf:", s.name);
+                  if (n?.trim()) patchShelf(s.id, { name: n.trim() });
+                }}>✎</button>
+                <button className="icon-btn" title="Move up" disabled={idx === 0} style={{ opacity: idx === 0 ? 0.3 : 1 }}
+                  onClick={async () => {
+                    const above = shelves[idx - 1];
+                    await Promise.all([
+                      supabase.from("shelves").update({ position: above.position }).eq("id", s.id),
+                      supabase.from("shelves").update({ position: s.position }).eq("id", above.id),
+                    ]);
+                    load();
+                  }}>↑</button>
+                <button className="icon-btn" title="Move down" disabled={idx === shelves.length - 1} style={{ opacity: idx === shelves.length - 1 ? 0.3 : 1 }}
+                  onClick={async () => {
+                    const below = shelves[idx + 1];
+                    await Promise.all([
+                      supabase.from("shelves").update({ position: below.position }).eq("id", s.id),
+                      supabase.from("shelves").update({ position: s.position }).eq("id", below.id),
+                    ]);
+                    load();
+                  }}>↓</button>
                 {s.kind !== "smart" && (
                   <select className="sel mini" value={s.sort_mode} onChange={(e) => patchShelf(s.id, { sort_mode: e.target.value })} aria-label="Sort">
                     <option value="curated">curated</option><option value="az">A–Z</option><option value="year">by year</option>

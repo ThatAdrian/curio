@@ -14,6 +14,7 @@ export type ShelfItemRow = {
     id: string; media_type: MediaType; title: string; year: number | null;
     cover_url: string | null; metadata: Record<string, any>;
     creators: { role: string; name: string }[];
+    external_source?: string; external_id?: string;
   };
 };
 
@@ -62,8 +63,8 @@ export function emitMote(x: number, y: number) {
   setTimeout(() => m.remove(), 850);
 }
 
-export function ShelfRow({ items, ownerView, ownerId, onChanged }: {
-  items: ShelfItemRow[]; ownerView: boolean; ownerId?: string; onChanged: () => void;
+export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = true }: {
+  items: ShelfItemRow[]; ownerView: boolean; ownerId?: string; onChanged: () => void; showPlays?: boolean;
 }) {
   const { session, toast } = useApp();
   const nav = useNavigate();
@@ -151,6 +152,18 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged }: {
     }
   }
 
+  function openItem(it: ShelfItemRow) {
+    const m = it.media_items;
+    if (m.media_type === "book" && m.external_id) {
+      window.open(`https://openlibrary.org/works/${m.external_id}`, "_blank");
+    } else if (m.media_type === "music") {
+      const artist = m.creators?.[0]?.name ?? "";
+      window.open(`https://music.youtube.com/search?q=${encodeURIComponent(artist + " " + m.title)}`, "_blank");
+    } else {
+      toast("Films, TV and games launch locally — that's the desktop app (2.0). Books and music open right here.");
+    }
+  }
+
   async function borrow(it: ShelfItemRow) {
     if (!session?.user || !ownerId) return toast("Sign in to borrow.");
     const { data: existing } = await supabase.from("loans").select("id,status")
@@ -174,7 +187,7 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged }: {
           const m = it.media_items;
           const d = dims(it)!;
           const stale = isStale(it);
-          const worn = it.times_consumed >= 20;
+          const worn = showPlays && it.times_consumed >= 20;
           const loved = worn && m.media_type === "music";
           const lean = hash(m.title) % 7 === 3;
           const plat = (m.metadata?.platforms?.[0] as string) ?? "";
@@ -232,7 +245,7 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged }: {
             <b>{pop.item.media_items.title}</b>
             <span className="fchip">
               {pop.item.completion >= 100 ? "★ 100% complete" : pop.item.completion > 0 ? pop.item.completion + "% in" : "on the shelf"}
-              {pop.item.times_consumed > 0 ? ` · ${pop.item.times_consumed} plays` : ""}
+              {showPlays && pop.item.times_consumed > 0 ? ` · ${pop.item.times_consumed} plays` : ""}
               {isStale(pop.item) ? " · 🕸 dusty" : ""}
             </span>
             <div className="acts">
@@ -245,7 +258,7 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged }: {
               {!ownerView && session && ownerId && ownerId !== session.user.id && (
                 <button onClick={() => borrow(pop.item)}>📚<br />Borrow</button>
               )}
-              {ownerView && <button onClick={() => toast("Local file launching arrives with the desktop app (2.0).")}>▶<br />Open</button>}
+              <button onClick={() => openItem(pop.item)}>▶<br />Open</button>
             </div>
           </>
         )}

@@ -221,6 +221,24 @@ export function CustomizerSheet({ open, onClose }: { open: boolean; onClose: () 
   const { profile, setThemePatch, toast } = useApp();
   const t: Theme = profile?.theme ?? {};
   const ACCENTS = ["#8a7bff", "#ff6b5e", "#2ed3b0", "#ffb454", "#ff6fb5", "#3dff8e"];
+  const [earned, setEarned] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (!open || !profile) return;
+    supabase.from("user_badges").select("badges(slug)").eq("user_id", profile.id)
+      .then(({ data }) => setEarned(new Set(((data as any[]) ?? []).map((b) => b.badges?.slug))));
+  }, [open, profile?.id]);
+  const MATS = [
+    { v: "default", n: "Cedar", s: "the default — honest wood" },
+    { v: "walnut", n: "Walnut", s: "darker, moodier" },
+    { v: "metal", n: "Industrial", s: "grated steel", need: "ten_ratings", hint: "rate 10 things in half-stars" },
+    { v: "pastel", n: "Pastel dream", s: "soft & milky", need: "completionist", hint: "take something to 100%" },
+  ];
+  const MODS: [string, string][] = [
+    ["stats", "Stat cards"], ["rotation", "In rotation"], ["connections", "Connections"],
+    ["badges", "Badges"], ["reviews", "Recent reviews"], ["spaces", "Spaces"],
+    ["canvas", "The canvas"], ["guestbook", "Guestbook"],
+  ];
+  const mods = (t as any).modules ?? {};
 
   return (
     <>
@@ -296,6 +314,36 @@ export function CustomizerSheet({ open, onClose }: { open: boolean; onClose: () 
                 onClick={() => setThemePatch({ avdeco: v })}><b>{n}</b></button>
             ))}
           </div>
+        </section>
+
+        <section>
+          <div className="section-label">Default shelf material — per-shelf picks override this</div>
+          <div className="theme-grid">
+            {MATS.map((m) => {
+              const locked = !!m.need && !earned.has(m.need);
+              return (
+                <button key={m.v} className={"theme-card" + ((t.shelfskin ?? "default") === m.v ? " on" : "") + (locked ? " locked" : "")}
+                  onClick={() => {
+                    if (locked) return toast(`Locked — ${m.hint}. Finishes are earned, not bought.`);
+                    setThemePatch({ shelfskin: m.v });
+                    toast(m.v === "default" ? "Back to cedar. The books exhale." : `${m.n} it is — every default shelf wears it now.`);
+                  }}>
+                  <b>{m.n}</b><span>{m.s}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section>
+          <div className="section-label">Profile modules — what visitors see</div>
+          {MODS.map(([k, label]) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
+              <button className={"switch" + (mods[k] !== false ? " on" : "")} role="switch" aria-checked={mods[k] !== false}
+                onClick={() => setThemePatch({ modules: { ...mods, [k]: mods[k] === false } } as any)} />
+              <span style={{ fontSize: 13.5 }}>{label}</span>
+            </div>
+          ))}
         </section>
 
         <section>
