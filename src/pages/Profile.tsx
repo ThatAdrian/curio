@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { supabase, notify, MEDIA_LABELS, MediaType } from "../lib/supabase";
 import { useApp } from "../lib/app";
 import { Spinner, Empty, Cover } from "../components/ui";
-import { ShelfRow, ShelfItemRow } from "../components/ShelfRow";
+import { ShelfRow, ShelfItemRow, ShelfSprites } from "../components/ShelfRow";
 import { Canvas, Guestbook } from "../components/Social";
 import { SendBagModal, SendWrapModal } from "../components/Gifts";
 import { awardBadges } from "../lib/extras";
@@ -157,7 +157,8 @@ export default function Profile() {
             <div key={s.id} className={`shelf-unit ${UNIT_CLASS[s.media_type ?? "book"]}${s.material && s.material !== "default" ? " skin-" + s.material : ""}`} style={{ marginBottom: 18 }}>
               <span className="unit-label">{s.name.toUpperCase()}</span>
               <div>
-                <ShelfRow items={items[s.id] ?? []} ownerView={!!isOwn} onChanged={load} />
+                <ShelfRow items={items[s.id] ?? []} ownerView={!!isOwn} ownerId={p.id} onChanged={load} />
+                <ShelfSprites decorations={(s.decorations as any) ?? []} editable={false} />
                 <div className="plank" />
               </div>
               <div className="unit-foot"><span className="mono">{(items[s.id] ?? []).length} shelved</span></div>

@@ -37,12 +37,14 @@ export function AddItemModal({ open, onClose, mediaType, shelfId, onAdded }: {
     setBusy(true);
     try {
       const mediaId = await saveMediaItem(picked);
-      const { error } = await supabase.from("shelf_items").insert({ shelf_id: shelfId, media_item_id: mediaId });
+      const PRICES = ["\u00a33.50", "99p", "2 FOR \u00a35", "\u00a31 BIN", "50p SALE", "\u00a37.99", "CLEARANCE"];
+      const sticker = Math.random() < 0.4 ? { label: PRICES[Math.floor(Math.random() * PRICES.length)] } : null;
+      const { error } = await supabase.from("shelf_items").insert({ shelf_id: shelfId, media_item_id: mediaId, price_sticker: sticker });
       if (error) {
         if (error.code === "23505") toast("Already on this shelf — it can't be shelved twice.");
         else throw error;
       } else {
-        toast(`${picked.title} shelved.`);
+        toast(sticker ? `${picked.title} shelved \u2014 price sticker still on. Peel it or wear it proudly.` : `${picked.title} shelved.`);
         onAdded(); onClose();
       }
     } catch (e: any) { toast("Couldn't shelve it: " + e.message); }
@@ -103,6 +105,7 @@ export function AddItemModal({ open, onClose, mediaType, shelfId, onAdded }: {
    ============================================================ */
 export function TopBar() {
   const { session, profile } = useApp();
+  const nav = useNavigate();
   const [open, setOpen] = useState(false);
   const [notifs, setNotifs] = useState<any[]>([]);
 
@@ -151,7 +154,17 @@ export function TopBar() {
           <div className="section-label">For you — private</div>
           {notifs.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing yet. Quiet shelves, calm mind.</p>}
           {notifs.map((n) => (
-            <div key={n.id} className={"notif" + (!n.read_at ? " unread" : "")}>
+            <div key={n.id} className={"notif" + (!n.read_at ? " unread" : "")} style={{ cursor: "pointer" }}
+              onClick={() => {
+                setOpen(false);
+                const t = n.type as string;
+                if (t === "follow" && n.actor?.username) nav(`/u/${n.actor.username}`);
+                else if (t.startsWith("bag_") || t === "wrap_received") nav("/gifts");
+                else if (t === "room_invite" && n.payload?.room_id) nav(`/room/${n.payload.room_id}`);
+                else if (t.startsWith("loan_")) nav("/rooms");
+                else if (t === "guestbook_signed") nav("/");
+                else nav("/activity");
+              }}>
               <span className="mini-ava">{(n.actor?.username ?? "?")[0]?.toUpperCase()}</span>
               <div className="ninfo">
                 <b>@{n.actor?.username ?? "someone"} {LABEL[n.type] ?? n.type}</b>

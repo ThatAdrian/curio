@@ -41,17 +41,20 @@ export default function ClubsIndex() {
         <button className="btn" onClick={() => setCreating(true)}>+ Found a club</button>
       </div>
       {clubs.length === 0 && <Empty>No clubs yet. Found the first one — name it something unhinged.</Empty>}
-      <div className="grid2">
-        {clubs.map((c) => (
-          <Link key={c.id} to={`/c/${c.slug}`} className="card pad" style={{ color: "var(--text)", textDecoration: "none" }}>
-            <b style={{ fontFamily: "var(--font-display)", fontSize: 17 }}>📌 {c.name}</b>
-            {c.description && <p className="muted" style={{ fontSize: 13, marginTop: 4 }}>{c.description}</p>}
-            <span className="mono faint" style={{ fontSize: 10, display: "block", marginTop: 8 }}>
-              {c.club_members?.[0]?.count ?? 0} member{(c.club_members?.[0]?.count ?? 0) === 1 ? "" : "s"}
-            </span>
-          </Link>
-        ))}
-      </div>
+      {clubs.length > 0 && (
+        <div className="corkboard">
+          {clubs.map((c, i) => (
+            <Link key={c.id} to={`/c/${c.slug}`} className="pin-note"
+              style={{ "--pr": ((i * 7) % 5 - 2) + "deg", "--paper": ["#fdf6d8", "#f8e3ee", "#ddeef8", "#e6f3da"][i % 4] } as any}>
+              <b>{c.name}</b>
+              {c.description && <p>{c.description.slice(0, 90)}{c.description.length > 90 ? "…" : ""}</p>}
+              <span className="mono" style={{ fontSize: 9.5, display: "block", marginTop: 8, letterSpacing: ".1em" }}>
+                {c.club_members?.[0]?.count ?? 0} MEMBER{(c.club_members?.[0]?.count ?? 0) === 1 ? "" : "S"}
+              </span>
+            </Link>
+          ))}
+        </div>
+      )}
       <Modal open={creating} onClose={() => setCreating(false)}>
         <h3>Found a club</h3>
         <p className="sub">You'll be the owner — you can appoint mods, pin bulletins, and remove posts.</p>

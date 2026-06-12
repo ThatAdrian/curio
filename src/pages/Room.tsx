@@ -8,6 +8,7 @@ import { Modal, Spinner, Empty } from "../components/ui";
 export default function RoomsIndex() {
   const { session, toast } = useApp();
   const [rooms, setRooms] = useState<any[] | null>(null);
+  const [requests, setRequests] = useState<any[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -17,6 +18,10 @@ export default function RoomsIndex() {
     const { data, error } = await supabase.from("room_members").select("room_id, role, rooms(id,name,created_at)").eq("user_id", session.user.id);
     if (error) { setErr(error.message); setRooms([]); return; }
     setRooms((data as any[]) ?? []);
+    const { data: reqs } = await supabase.from("loans")
+      .select("*, media_items(title), borrower:profiles!loans_borrower_id_fkey(username)")
+      .eq("lender_id", session.user.id).eq("status", "requested");
+    setRequests((reqs as any[]) ?? []);
   }
   useEffect(() => { load(); }, [session?.user?.id]);
 
@@ -39,6 +44,29 @@ export default function RoomsIndex() {
         <div><h1>Living rooms</h1><p>Shared spaces — solo or co-curated. The room itself is the menu.</p></div>
         <button className="btn" onClick={() => setCreating(true)}>+ New room</button>
       </div>
+      {requests.length > 0 && (
+        <div className="card pad" style={{ marginBottom: 18 }}>
+          <div className="section-label">Borrow requests — people want your stuff</div>
+          {requests.map((l) => (
+            <div key={l.id} className="proom-row">
+              <div className="nfo"><b>{l.media_items?.title}</b><span>@{l.borrower?.username} is asking nicely</span></div>
+              <span style={{ display: "flex", gap: 5 }}>
+                <button className="btn small primary" onClick={async () => {
+                  await supabase.from("loans").update({ status: "active", accepted_at: new Date().toISOString(), due_at: new Date(Date.now() + 14 * 86400000).toISOString() }).eq("id", l.id);
+                  notify(l.borrower_id, "loan_accepted", { title: l.media_items?.title });
+                  toast("Lent out — 14 days, then the I.O.U. starts judging.");
+                  load();
+                }}>Lend</button>
+                <button className="btn small" onClick={async () => {
+                  await supabase.from("loans").update({ status: "declined" }).eq("id", l.id);
+                  toast("Declined. Some things stay home.");
+                  load();
+                }}>No</button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
       {err && <Empty>Rooms aren't reachable yet: <span className="mono" style={{ fontSize: 11 }}>{err}</span><br /><br />Run <b>supabase/migrations/00002_fixes.sql</b> in the SQL Editor — it fixes the room policies.</Empty>}
       {!err && rooms.length === 0 && <Empty>No rooms yet. Build one for yourself, or one to share.</Empty>}
       <div className="grid2">
@@ -142,6 +170,20 @@ export function RoomPage() {
     toast(`${l.media_items?.title} returned. Karma intact.`);
     load();
   }
+  async function decideLoan(l: any, accept: boolean) {
+    if (accept) {
+      await supabase.from("loans").update({
+        status: "active", accepted_at: new Date().toISOString(),
+        due_at: new Date(Date.now() + 14 * 86400000).toISOString(),
+      }).eq("id", l.id);
+      notify(l.borrower_id, "loan_accepted", { title: l.media_items?.title });
+      toast(`Lent out. Due back in 14 days — the I.O.U. holds its place.`);
+    } else {
+      await supabase.from("loans").update({ status: "declined" }).eq("id", l.id);
+      toast("Declined. Some things don't leave the shelf.");
+    }
+    load();
+  }
 
   const PANEL: Record<string, React.ReactNode> = {
     shelf: <>
@@ -158,15 +200,26 @@ export function RoomPage() {
       <h4>The borrowed pile</h4>
       <p className="psub">Everything in circulation that involves you.</p>
       {loans.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing borrowed, nothing lent. Suspiciously responsible.</p>}
-      {loans.map((l) => (
-        <div key={l.id} className="proom-row">
-          <div className="nfo">
-            <b>{l.media_items?.title}</b>
-            <span>{l.lender_id === session?.user?.id ? `lent to @${l.borrower?.username}` : `borrowed from @${l.lender?.username}`} · {l.status}</span>
+      {loans.map((l) => {
+        const lending = l.lender_id === session?.user?.id;
+        const due = l.due_at ? Math.max(0, Math.ceil((+new Date(l.due_at) - Date.now()) / 86400000)) : null;
+        return (
+          <div key={l.id} className="proom-row">
+            <div className="nfo">
+              <b>{l.media_items?.title}</b>
+              <span>{lending ? `to @${l.borrower?.username}` : `from @${l.lender?.username}`} · {l.status}{due !== null && l.status === "active" ? ` · ${due}d left` : ""}</span>
+            </div>
+            {l.status === "requested" && lending && (
+              <span style={{ display: "flex", gap: 5 }}>
+                <button className="btn small primary" onClick={() => decideLoan(l, true)}>Lend</button>
+                <button className="btn small" onClick={() => decideLoan(l, false)}>No</button>
+              </span>
+            )}
+            {l.status === "requested" && !lending && <span className="mono faint" style={{ fontSize: 9 }}>waiting…</span>}
+            {l.status === "active" && <button className="btn small" onClick={() => returnLoan(l)}>Return</button>}
           </div>
-          <button className="btn small" onClick={() => returnLoan(l)}>Return</button>
-        </div>
-      ))}
+        );
+      })}
       <p className="mono faint" style={{ fontSize: 9.5, marginTop: 10 }}>lending starts from a friend's shelf — borrow buttons land there next</p>
     </>,
     tv: <>

@@ -1,5 +1,5 @@
-# Curio.
- 
+# Curio
+
 Your shelves, everywhere. A social platform for films, TV, games, books and music —
 ratings, reviews, shelves, rooms, clubs, and (in 2.0) a local-media launcher.
 

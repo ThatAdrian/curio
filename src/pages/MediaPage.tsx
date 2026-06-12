@@ -252,7 +252,9 @@ export function ShelfPicker({ mediaId, mediaType, onClose }: { mediaId: string; 
   }, [session?.user?.id]);
 
   async function put(shelfId: string, name: string) {
-    const { error } = await supabase.from("shelf_items").insert({ shelf_id: shelfId, media_item_id: mediaId });
+    const PRICES = ["£3.50", "99p", "2 FOR £5", "£1 BIN", "50p SALE", "£7.99", "CLEARANCE"];
+    const sticker = Math.random() < 0.4 ? { label: PRICES[Math.floor(Math.random() * PRICES.length)] } : null;
+    const { error } = await supabase.from("shelf_items").insert({ shelf_id: shelfId, media_item_id: mediaId, price_sticker: sticker });
     if (error) toast(error.code === "23505" ? "Already on that shelf." : error.message);
     else toast(`Shelved on ${name}.`);
     onClose();

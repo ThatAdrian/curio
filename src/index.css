@@ -573,3 +573,75 @@ footer.note img{height:11px;vertical-align:middle;margin:0 4px}
 .wl-row:last-child{border-bottom:none}
 .progress-bar{height:7px;border-radius:99px;background:var(--surface-2);overflow:hidden;margin:10px 0}
 .progress-bar i{display:block;height:100%;background:var(--accent);border-radius:99px;transition:width .3s}
+
+/* ============================================================
+   flair restoration: stickers, lean, dog-ear, blow, cork, bag3d, sprites
+   ============================================================ */
+.price-stk{position:absolute;top:7px;right:7px;z-index:6;min-width:40px;padding:7px 6px;border-radius:50%;
+  background:radial-gradient(circle at 32% 28%,#ffe14d,#f5b400 70%);color:#5e3c00;
+  font-family:var(--font-mono);font-size:8.5px;font-weight:700;text-align:center;line-height:1.2;
+  transform:rotate(8deg);box-shadow:0 2px 6px rgba(0,0,0,.35);cursor:grab;touch-action:none;user-select:none;will-change:transform}
+.price-stk.peeling{animation:peelFall .7s var(--spring) forwards !important}
+@keyframes peelFall{0%{transform:rotate(64deg) translate(14px,-8px) scale(.9)}
+  40%{transform:rotate(120deg) translate(20px,30px) scale(.85);opacity:1}
+  100%{transform:rotate(200deg) translate(26px,130px) scale(.7);opacity:0}}
+
+.sp.lean:not(.hov):not(:focus-within) .sp3d{transform:rotate(2.4deg) translateY(1px)}
+.sp.worn .ffront::after{content:"";position:absolute;top:0;right:0;width:15px;height:15px;z-index:5;
+  background:linear-gradient(225deg,var(--bg) 47%,rgba(255,255,255,.45) 47% 56%,rgba(0,0,0,.3) 56% 64%,transparent 64%)}
+.sp .ffront::before{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;
+  background:linear-gradient(112deg,transparent 30%,rgba(255,255,255,.13) 42%,transparent 54%)}
+
+/* cartridge blow ritual */
+.blow-stage{display:flex;flex-direction:column;align-items:center;gap:18px;padding:14px 0 6px}
+.cart{position:relative;width:150px;height:128px;border-radius:10px 10px 6px 6px;
+  background:linear-gradient(180deg,#8a8f98,#5d646f);box-shadow:inset 0 3px 4px rgba(255,255,255,.3),inset 0 -6px 8px rgba(0,0,0,.3),0 10px 20px rgba(0,0,0,.4)}
+.cart::before{content:"";position:absolute;left:14px;right:14px;top:14px;height:62px;border-radius:5px;background:var(--cartcov,linear-gradient(160deg,#34465e,#101622))}
+.cart::after{content:"";position:absolute;left:22px;right:22px;bottom:7px;height:9px;border-radius:2px;
+  background:repeating-linear-gradient(90deg,#caa342 0 5px,#7a6224 5px 8px)}
+.cart.dirty::after{background:repeating-linear-gradient(90deg,#8a7a52 0 5px,#4a4434 5px 8px)}
+.cart.shaking{animation:cartShake .5s ease-in-out infinite}
+@keyframes cartShake{0%,100%{transform:rotate(-2.5deg)}50%{transform:rotate(2.5deg) translateY(-3px)}}
+.cart.clean::after{background:repeating-linear-gradient(90deg,#ffe9a8 0 5px,#caa342 5px 8px);box-shadow:0 0 10px rgba(255,233,168,.7)}
+.blow-btn{position:relative;overflow:hidden}
+.blow-btn .fill{position:absolute;inset:0;background:color-mix(in srgb,var(--accent) 40%,transparent);width:0%;transition:width .08s linear}
+.blow-btn span{position:relative;z-index:1}
+
+/* corkboard clubs */
+.corkboard{position:relative;border:12px solid #5e3c20;border-radius:16px;padding:26px 22px;
+  background:radial-gradient(3px 3px at 12% 22%,rgba(0,0,0,.12),transparent 60%),
+             radial-gradient(2px 2px at 64% 58%,rgba(0,0,0,.1),transparent 60%),
+             radial-gradient(3px 3px at 38% 82%,rgba(0,0,0,.1),transparent 60%),
+             linear-gradient(160deg,#c49a66,#a87c48);
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px;box-shadow:var(--shadow-pop)}
+.pin-note{position:relative;background:var(--paper,#fdf6d8);color:#4a3a20;padding:18px 16px 14px;
+  transform:rotate(var(--pr,-1.5deg));box-shadow:0 6px 14px rgba(0,0,0,.32);text-decoration:none;
+  transition:transform .3s var(--spring),box-shadow .3s}
+.pin-note:hover{transform:rotate(0deg) translateY(-3px) scale(1.02);box-shadow:0 12px 22px rgba(0,0,0,.4);text-decoration:none}
+.pin-note::before{content:"";position:absolute;top:-7px;left:50%;transform:translateX(-50%);width:14px;height:14px;border-radius:50%;
+  background:radial-gradient(circle at 35% 30%,#ff8a8a,#b03030);box-shadow:0 3px 5px rgba(0,0,0,.4)}
+.pin-note b{font-family:var(--font-display);font-size:16px;display:block;margin-bottom:4px;color:#33240e}
+.pin-note p{font-size:12.5px;line-height:1.5;color:#6e5a36}
+.pin-note .mono{color:#8a7448 !important}
+
+/* 3D recommendation bag */
+.bag-stage{position:relative;height:300px;display:flex;align-items:center;justify-content:center;perspective:1100px;cursor:grab;touch-action:none}
+.bag-stage:active{cursor:grabbing}
+.bag3d{position:relative;transform-style:preserve-3d;transition:opacity .5s}
+.bag3d.idle{animation:bagIdle 9s ease-in-out infinite}
+@keyframes bagIdle{0%,100%{transform:rotateX(-8deg) rotateY(18deg)}50%{transform:rotateX(-6deg) rotateY(30deg)}}
+.bagface{position:absolute;left:50%;top:50%;background:
+  repeating-linear-gradient(0deg,rgba(94,60,32,.12) 0 1px,transparent 1px 8px),
+  linear-gradient(180deg,#c9a36a,#a8854e);
+  box-shadow:inset 0 0 18px rgba(94,60,32,.3);display:flex;align-items:center;justify-content:center}
+.bag-note{font-family:'Comic Sans MS','Segoe Script',cursive;font-size:12px;line-height:1.5;color:#5a4420;
+  background:#fdf6d8;padding:9px 12px;transform:rotate(-2deg);box-shadow:0 3px 7px rgba(0,0,0,.3);position:relative;max-width:80%;text-align:center}
+.bag-note::before{content:"";position:absolute;top:-7px;left:50%;transform:translateX(-50%) rotate(-2deg);width:36px;height:13px;
+  background:rgba(255,255,255,.5);box-shadow:0 1px 2px rgba(0,0,0,.18)}
+.bag-item3d{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;perspective:1000px;z-index:5}
+.bag-item3d .ibx{animation:pullUp .8s var(--spring)}
+
+/* shelf sprites */
+.sprite{position:absolute;bottom:50px;z-index:3;font-size:23px;filter:drop-shadow(0 4px 4px rgba(0,0,0,.4));
+  cursor:pointer;transition:transform .3s var(--spring);transform:translateX(-50%)}
+.sprite:hover{transform:translateX(-50%) translateY(-5px) rotate(-8deg)}

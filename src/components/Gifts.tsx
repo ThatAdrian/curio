@@ -87,13 +87,27 @@ export function SendBagModal({ recipient, onClose }: { recipient: { id: string; 
   );
 }
 
-/* ============ open a received bag ============ */
+/* ============ open a received bag — proper 3D ============ */
+function BagFace({ w, h, tf, style, children }: { w: number; h: number; tf: string; style?: React.CSSProperties; children?: React.ReactNode }) {
+  return (
+    <div className="bagface" style={{ width: w, height: h, marginLeft: -w / 2, marginTop: -h / 2, transform: tf, ...style }}>
+      {children}
+    </div>
+  );
+}
+
 export function OpenBagModal({ bag, onClose, onDone }: { bag: any; onClose: () => void; onDone: () => void }) {
-  const { session, toast } = useApp();
+  const { toast } = useApp();
   const [items, setItems] = useState<any[]>([]);
   const [current, setCurrent] = useState<any | null>(null);
   const [picking, setPicking] = useState<any | null>(null);
   const [pendingFinish, setPendingFinish] = useState(false);
+  const [rot, setRot] = useState({ x: -8, y: 22 });
+  const [itemRot, setItemRot] = useState({ x: -8, y: 22 });
+  const [grabbed, setGrabbed] = useState(false);
+  const drag = useRef<{ x: number; y: number } | null>(null);
+
+  const W = 170, H = 150, D = 92;
 
   async function load() {
     const { data } = await supabase.from("bag_items")
@@ -104,11 +118,13 @@ export function OpenBagModal({ bag, onClose, onDone }: { bag: any; onClose: () =
   useEffect(() => { load(); }, [bag.id]);
 
   const remaining = items.filter((i) => !i.pulled_at);
+  const inspecting = !!current;
 
   async function pull() {
     const next = remaining[0];
     if (!next) return;
     await supabase.from("bag_items").update({ pulled_at: new Date().toISOString() }).eq("bag_id", bag.id).eq("media_item_id", next.media_item_id);
+    setItemRot({ x: -8, y: 22 });
     setCurrent({ ...next, pulled_at: new Date().toISOString() });
     setItems(items.map((i) => (i.media_item_id === next.media_item_id ? { ...i, pulled_at: new Date().toISOString() } : i)));
   }
@@ -116,45 +132,97 @@ export function OpenBagModal({ bag, onClose, onDone }: { bag: any; onClose: () =
     if (!current) return;
     await supabase.from("bag_items").update({ outcome: o }).eq("bag_id", bag.id).eq("media_item_id", current.media_item_id);
     if (o === "watch_later") { try { toast(await addToWatchLater(current.media_item_id)); } catch (e: any) { toast(e.message); } }
-    if (o === "shelved") { setPicking(current); }
+    if (o === "shelved") setPicking(current);
     if (o === "skipped") toast("Skipped. The sender felt a disturbance.");
     const left = items.filter((i) => !i.pulled_at && i.media_item_id !== current.media_item_id);
     setCurrent(null);
     if (left.length === 0) {
       await supabase.from("rec_bags").update({ status: "finished", finished_at: new Date().toISOString() }).eq("id", bag.id);
       notify(bag.sender_id, "bag_returned", { bag_id: bag.id });
-      if (o === "shelved") { setPendingFinish(true); return; } // let the shelf picker finish first
+      if (o === "shelved") { setPendingFinish(true); return; }
       toast("Bag finished. The sender gets the verdicts.");
       onDone();
     }
   }
 
+  const cur = current?.media_items;
+  const ITW = cur?.media_type === "music" ? 150 : 120;
+  const ITH = cur?.media_type === "music" ? 150 : 165;
+  const ITD = cur?.media_type === "music" ? 10 : 26;
+  const spineBg = "linear-gradient(180deg, rgba(255,255,255,.12), rgba(0,0,0,.32)), #3a3340";
+
   return (
-    <Modal open onClose={onClose} width={520}>
+    <Modal open onClose={onClose} width={540}>
       <h3>🛍 From @{bag.sender?.username ?? "someone"}</h3>
-      {bag.note && <div className="bag-note-real">“{bag.note}”</div>}
-      {!current ? (
-        <div style={{ textAlign: "center", padding: "18px 0" }}>
-          <div className="paper-bag"><span /></div>
-          <p className="mono faint" style={{ fontSize: 10.5, margin: "12px 0" }}>{remaining.length} item{remaining.length === 1 ? "" : "s"} still inside</p>
-          {remaining.length > 0
-            ? <button className="btn primary" onClick={pull}>Pull one out</button>
-            : <button className="btn" onClick={onClose}>It's empty — close the bag</button>}
+      <p className="sub">{inspecting ? "Drag to turn it over, then decide." : `Drag to rotate the bag · ${remaining.length} item${remaining.length === 1 ? "" : "s"} inside`}</p>
+      <div className="bag-stage"
+        onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY }; setGrabbed(true); (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); }}
+        onPointerMove={(e) => {
+          if (!drag.current) return;
+          const dx = (e.clientX - drag.current.x) * 0.45, dy = (e.clientY - drag.current.y) * 0.45;
+          drag.current = { x: e.clientX, y: e.clientY };
+          if (inspecting) setItemRot((r) => ({ x: Math.max(-80, Math.min(80, r.x - dy)), y: r.y + dx }));
+          else setRot((r) => ({ x: Math.max(-80, Math.min(80, r.x - dy)), y: r.y + dx }));
+        }}
+        onPointerUp={() => (drag.current = null)} onPointerCancel={() => (drag.current = null)}>
+
+        {/* the bag — sets itself down while you inspect */}
+        <div className={"bag3d" + (!grabbed && !inspecting ? " idle" : "")}
+          style={{
+            transform: inspecting
+              ? "translateY(115px) rotateX(-4deg) scale(.82)"
+              : (grabbed ? `rotateX(${rot.x}deg) rotateY(${rot.y}deg)` : undefined),
+            opacity: inspecting ? 0.15 : 1,
+            transition: "transform .7s var(--spring), opacity .5s",
+          }}>
+          <BagFace w={W} h={H} tf={`translateZ(${D / 2}px)`} style={{ borderRadius: 6 }}>
+            <div className="bag-note">{bag.note ? `“${bag.note}”` : "no skips in here — promise"}</div>
+          </BagFace>
+          <BagFace w={W} h={H} tf={`rotateY(180deg) translateZ(${D / 2}px)`} style={{ borderRadius: 6 }}>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: 11, letterSpacing: ".22em", color: "#5e3c20", border: "2px solid rgba(94,60,32,.5)", padding: "6px 10px", transform: "rotate(2deg)" }}>CURIO RECS</span>
+          </BagFace>
+          <BagFace w={D} h={H} tf={`rotateY(-90deg) translateZ(${W / 2}px)`} />
+          <BagFace w={D} h={H} tf={`rotateY(90deg) translateZ(${W / 2}px)`} />
+          <BagFace w={W} h={D} tf={`rotateX(-90deg) translateZ(${H / 2}px)`} />
         </div>
-      ) : (
-        <div style={{ textAlign: "center" }}>
-          <div className="bag-reveal">
-            <Cover url={current.media_items?.cover_url} title={current.media_items?.title}
-              sub={`${MEDIA_LABELS[current.media_items?.media_type as MediaType]}${current.media_items?.year ? " · " + current.media_items.year : ""}`}
-              style={{ width: 150, aspectRatio: current.media_items?.media_type === "music" ? "1" : "2/3", margin: "0 auto" }} />
+
+        {/* the pulled item — its own 3D box */}
+        {inspecting && cur && (
+          <div className="bag-item3d">
+            <div className="ibx" style={{ position: "relative", transformStyle: "preserve-3d", transform: `rotateX(${itemRot.x}deg) rotateY(${itemRot.y}deg)` }}>
+              <BagFace w={ITW} h={ITH} tf={`translateZ(${ITD / 2}px)`} style={{ borderRadius: 4, background: "none", boxShadow: "none" }}>
+                <Cover url={cur.cover_url} title={cur.title}
+                  sub={`${MEDIA_LABELS[cur.media_type as MediaType]}${cur.year ? " · " + cur.year : ""}`}
+                  style={{ width: "100%", height: "100%", borderRadius: 4 }} />
+              </BagFace>
+              <BagFace w={ITW} h={ITH} tf={`rotateY(180deg) translateZ(${ITD / 2}px)`} style={{ borderRadius: 4, background: spineBg }}>
+                <div style={{ padding: 12, color: "rgba(255,255,255,.65)", fontFamily: "var(--font-mono)", fontSize: 8.5, lineHeight: 1.9 }}>
+                  picked by @{bag.sender?.username}<br />reason: “trust me”<br /><br />
+                  <span style={{ border: "1px solid rgba(255,255,255,.3)", padding: "2px 7px", borderRadius: 3 }}>CURIO™ GIFT COPY</span>
+                </div>
+              </BagFace>
+              <BagFace w={ITD} h={ITH} tf={`rotateY(-90deg) translateZ(${ITW / 2}px)`} style={{ background: spineBg }} />
+              <BagFace w={ITD} h={ITH} tf={`rotateY(90deg) translateZ(${ITW / 2}px)`} style={{ background: spineBg }} />
+              <BagFace w={ITW} h={ITD} tf={`rotateX(90deg) translateZ(${ITH / 2}px)`} style={{ background: spineBg }} />
+              <BagFace w={ITW} h={ITD} tf={`rotateX(-90deg) translateZ(${ITH / 2}px)`} style={{ background: spineBg }} />
+            </div>
           </div>
-          <div style={{ display: "flex", gap: 8, justifyContent: "center", marginTop: 16, flexWrap: "wrap" }}>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, justifyContent: "center", flexWrap: "wrap", marginTop: 6 }}>
+        {!inspecting ? (
+          remaining.length > 0
+            ? <button className="btn primary" onClick={pull}>Pull one out ({remaining.length} left)</button>
+            : <button className="btn" onClick={onClose}>It's empty — set the bag down</button>
+        ) : (
+          <>
             <button className="btn small primary" onClick={() => outcome("shelved")}>Shelve it</button>
             <button className="btn small" onClick={() => outcome("watch_later")}>→ Watch later</button>
             <button className="btn small" onClick={() => outcome("skipped")}>Skip (they'll know)</button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </div>
       {picking && <ShelfPicker mediaId={picking.media_item_id} mediaType={picking.media_items.media_type}
         onClose={() => { setPicking(null); if (pendingFinish) { toast("Bag finished. The sender gets the verdicts."); onDone(); } }} />}
     </Modal>

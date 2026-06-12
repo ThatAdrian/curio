@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase, MediaType } from "../lib/supabase";
 import { useApp } from "../lib/app";
-import { ShelfRow, ShelfItemRow } from "../components/ShelfRow";
+import { ShelfRow, ShelfItemRow, ShelfSprites } from "../components/ShelfRow";
 import { AddItemModal } from "../components/Chrome";
 import { Modal, Spinner, Empty } from "../components/ui";
 import { Link } from "react-router-dom";
@@ -10,8 +10,10 @@ import { WatchLaterModule } from "../components/WatchLater";
 type Shelf = {
   id: string; name: string; media_type: MediaType | null; kind: string;
   smart_rules: any; material: string; sort_mode: string; position: number;
-  visibility: string; show_on_profile: boolean;
+  visibility: string; show_on_profile: boolean; decorations?: { e: string; x: number }[];
 };
+
+const SPRITES = ["\ud83e\udeb4", "\ud83c\udfc6", "\ud83e\udd96", "\ud83d\udcfc", "\ud83d\udd6f\ufe0f", "\ud83c\udfb2", "\ud83e\uddf8", "\ud83e\udea9", "\ud83d\udc0c", "\ud83d\uddff"];
 
 const UNIT_CLASS: Record<string, string> = { film: "unit-rental", tv: "unit-rental", game: "unit-cab", book: "unit-wood", music: "unit-crate" };
 const UNIT_LABEL: Record<string, string> = {
@@ -26,6 +28,7 @@ export default function ShelfPage() {
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [adding, setAdding] = useState<Shelf | null>(null);
   const [creating, setCreating] = useState(false);
+  const [spritePick, setSpritePick] = useState<{ shelf: Shelf; x: number; y: number } | null>(null);
 
   async function load() {
     if (!session?.user) return;
@@ -113,6 +116,8 @@ export default function ShelfPage() {
                   <option value="default">default wood</option><option value="walnut">walnut</option>
                   <option value="metal">metal</option><option value="pastel">pastel</option>
                 </select>
+                <button className="icon-btn" title="Place a trinket on this shelf"
+                  onClick={(e) => setSpritePick({ shelf: s, x: e.clientX, y: e.clientY + 12 })}>✦</button>
                 <button className={"icon-btn eye" + (s.show_on_profile ? " on" : "")} title="Shown on your public profile"
                   onClick={() => { patchShelf(s.id, { show_on_profile: !s.show_on_profile }); toast(s.show_on_profile ? "Hidden from your profile." : "Now showing on your profile."); }}>
                   👁
@@ -123,7 +128,9 @@ export default function ShelfPage() {
             <div className={`shelf-unit ${UNIT_CLASS[t]}${cls}` + (s.show_on_profile ? "" : " hidden-unit")}>
               <span className="unit-label">{s.kind === "smart" ? "SMART SHELF · AUTO-CURATED" : UNIT_LABEL[t]}</span>
               <div>
-                <ShelfRow items={rows} ownerView onChanged={load} />
+                <ShelfRow items={rows} ownerView ownerId={session.user.id} onChanged={load} />
+                <ShelfSprites decorations={(s.decorations as any) ?? []} editable
+                  onChange={(next) => patchShelf(s.id, { decorations: next } as any)} />
                 <div className="plank" />
               </div>
               <div className="unit-foot">
@@ -144,6 +151,22 @@ export default function ShelfPage() {
           shelfId={adding.id} onAdded={load} />
       )}
       {creating && <NewShelfModal onClose={() => setCreating(false)} onCreated={load} owner={session.user.id} nextPos={shelves.length} />}
+      {spritePick && (
+        <div className="popover" style={{ left: Math.min(spritePick.x, innerWidth - 300), top: spritePick.y }}
+          onPointerLeave={() => setSpritePick(null)}>
+          <div className="pgridx">
+            {SPRITES.map((e) => (
+              <button key={e} onClick={() => {
+                const cur = (spritePick.shelf.decorations as any) ?? [];
+                if (cur.length >= 6) { toast("Six trinkets max \u2014 it's a shelf, not a gift shop."); return; }
+                patchShelf(spritePick.shelf.id, { decorations: [...cur, { e, x: 8 + Math.random() * 84 }] } as any);
+                setSpritePick(null);
+                toast("Trinket placed. It lives here now.");
+              }}>{e}</button>
+            ))}
+          </div>
+        </div>
+      )}
     </main>
   );
 }

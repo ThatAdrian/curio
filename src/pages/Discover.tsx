@@ -23,6 +23,7 @@ export default function Discover() {
   const [searching, setSearching] = useState(false);
   const [popular, setPopular] = useState<any[]>([]);
   const [newcomers, setNewcomers] = useState<any[]>([]);
+  const [twins, setTwins] = useState<any[]>([]);
   const [myFollows, setMyFollows] = useState<Set<string>>(new Set());
   const [picking, setPicking] = useState<{ id: string; type: MediaType } | null>(null);
   const deb = useRef<number>();
@@ -39,6 +40,26 @@ export default function Discover() {
     if (!session?.user) return;
     supabase.from("follows").select("followee_id").eq("follower_id", session.user.id)
       .then(({ data }) => setMyFollows(new Set(((data as any[]) ?? []).map((f) => f.followee_id))));
+    (async () => {
+      const { data: mine } = await supabase.from("ratings").select("media_item_id,rating").eq("user_id", session.user.id);
+      const my: Record<string, number> = {};
+      ((mine as any[]) ?? []).forEach((r) => (my[r.media_item_id] = Number(r.rating)));
+      const ids = Object.keys(my);
+      if (!ids.length) return;
+      const { data: theirs } = await supabase.from("ratings")
+        .select("user_id, media_item_id, rating, profiles!ratings_user_id_fkey(username)")
+        .in("media_item_id", ids.slice(0, 80)).neq("user_id", session.user.id).limit(500);
+      const byUser: Record<string, { uname: string; diffs: number[] }> = {};
+      ((theirs as any[]) ?? []).forEach((r) => {
+        const e = (byUser[r.user_id] ??= { uname: r.profiles?.username ?? "?", diffs: [] });
+        e.diffs.push(Math.abs(Number(r.rating) - my[r.media_item_id]));
+      });
+      const list = Object.entries(byUser).map(([uid, e]) => {
+        const avg = e.diffs.reduce((a, b) => a + b, 0) / e.diffs.length;
+        return { id: uid, username: e.uname, shared: e.diffs.length, match: Math.round(100 - (avg / 4.5) * 100) };
+      }).sort((a, b) => b.shared - a.shared || b.match - a.match).slice(0, 3);
+      setTwins(list);
+    })();
   }, [session?.user?.id]);
 
   function onType(v: string) {
@@ -142,6 +163,25 @@ export default function Discover() {
                   className={p.media_items.media_type === "music" ? "sq" : ""}
                   sub={`${p.rating_count}× rated · ${(Number(p.rating_sum) / p.rating_count).toFixed(1)}★`}
                   style={{ aspectRatio: p.media_items.media_type === "music" ? "1" : "2/3", width: "100%" }} />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {twins.length > 0 && (
+        <div style={{ margin: "26px 0" }}>
+          <div className="section-label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            Taste twins — people, not feeds
+            <span className="chip" title="Computed from rating overlap. Never engagement.">how? rating overlap</span>
+          </div>
+          <div className="twin-row">
+            {twins.map((t) => (
+              <div key={t.id} className="card twin">
+                <span className="mini-ava">{t.username[0]?.toUpperCase()}</span>
+                <Link to={`/u/${t.username}`} style={{ color: "var(--text)" }}><b>@{t.username}</b></Link>
+                <span className="mono" style={{ fontSize: 10, color: "var(--accent)" }}>{t.match}% match · {t.shared} shared rating{t.shared === 1 ? "" : "s"}</span>
+                {!myFollows.has(t.id) && <button className="btn small" onClick={() => follow({ id: t.id, username: t.username })}>Follow</button>}
               </div>
             ))}
           </div>
