@@ -10,7 +10,7 @@ import { WatchLaterModule } from "../components/WatchLater";
 type Shelf = {
   id: string; name: string; media_type: MediaType | null; kind: string;
   smart_rules: any; material: string; sort_mode: string; position: number;
-  visibility: string; show_on_profile: boolean; decorations?: { e: string; x: number }[];
+  visibility: string; show_on_profile: boolean; decorations?: { e: string; x: number }[]; view_mode?: string;
 };
 
 const SPRITES = ["\ud83e\udeb4", "\ud83c\udfc6", "\ud83e\udd96", "\ud83d\udcfc", "\ud83d\udd6f\ufe0f", "\ud83c\udfb2", "\ud83e\uddf8", "\ud83e\udea9", "\ud83d\udc0c", "\ud83d\uddff"];
@@ -140,6 +140,10 @@ export default function ShelfPage() {
                   <option value="default">default wood</option><option value="walnut">walnut</option>
                   <option value="metal">metal</option><option value="pastel">pastel</option>
                 </select>
+                <select className="select" title="Display mode" value={s.view_mode ?? "spines"} style={{ width: "auto", padding: "5px 8px", fontSize: 11 }}
+                  onChange={(e) => patchShelf(s.id, { view_mode: e.target.value } as any)}>
+                  <option value="spines">Spines</option><option value="covers">Covers</option><option value="list">List</option>
+                </select>
                 <button className="icon-btn" title="Place a trinket on this shelf"
                   onClick={(e) => setSpritePick({ shelf: s, x: e.clientX, y: e.clientY + 12 })}>✦</button>
                 <button className={"icon-btn eye" + (s.show_on_profile ? " on" : "")} title="Shown on your public profile"
@@ -152,7 +156,7 @@ export default function ShelfPage() {
             <div className={`shelf-unit ${UNIT_CLASS[t]}${cls}` + (s.show_on_profile ? "" : " hidden-unit")}>
               <span className="unit-label">{s.kind === "smart" ? "SMART SHELF · AUTO-CURATED" : UNIT_LABEL[t]}</span>
               <div>
-                <ShelfRow items={rows} ownerView ownerId={session.user.id} onChanged={load} />
+                <ShelfRow items={rows} ownerView ownerId={session.user.id} onChanged={load} view={(s.view_mode as any) ?? "spines"} />
                 <ShelfSprites decorations={(s.decorations as any) ?? []} editable
                   onChange={(next) => patchShelf(s.id, { decorations: next } as any)} />
                 <div className="plank" />

@@ -136,6 +136,60 @@ export default function Settings() {
           </div>
 
           <div className="card pad" style={{ marginBottom: 16 }}>
+            <div className="section-label">Experience</div>
+            {([
+              ["reduce_motion", "Reduce motion — calm every animation", false],
+              ["dust", "Dust &amp; cobwebs on neglected items", true],
+              ["stickers", "Price stickers on shelved finds", true],
+              ["lean", "Let the odd spine lean naturally", true],
+              ["autoplay_songs", "Autoplay profile songs when visiting", true],
+            ] as [string, string, boolean][]).map(([k, label, def]) => {
+              const prefs = (profile as any)?.prefs ?? {};
+              const on = prefs[k] === undefined ? def : prefs[k] === true;
+              return (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
+                  <button className={"switch" + (on ? " on" : "")} role="switch" aria-checked={on}
+                    onClick={async () => { await supabase.from("profiles").update({ prefs: { ...prefs, [k]: !on } }).eq("id", profile!.id); refreshProfile(); }} />
+                  <span style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: label }} />
+                </div>);
+            })}
+          </div>
+
+          <div className="card pad" style={{ marginBottom: 16 }}>
+            <div className="section-label">Notifications — what rings the bell</div>
+            {([
+              ["notif_social", "Follows, guestbook &amp; review activity", true],
+              ["notif_gifts", "Bags &amp; blind dates", true],
+              ["notif_loans", "Borrowing &amp; returns", true],
+              ["notif_clubs", "Rooms &amp; clubs", true],
+            ] as [string, string, boolean][]).map(([k, label, def]) => {
+              const prefs = (profile as any)?.prefs ?? {};
+              const on = prefs[k] === undefined ? def : prefs[k] === true;
+              return (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 0" }}>
+                  <button className={"switch" + (on ? " on" : "")} role="switch" aria-checked={on}
+                    onClick={async () => { await supabase.from("profiles").update({ prefs: { ...prefs, [k]: !on } }).eq("id", profile!.id); refreshProfile(); }} />
+                  <span style={{ fontSize: 13 }} dangerouslySetInnerHTML={{ __html: label }} />
+                </div>);
+            })}
+          </div>
+
+          <div className="card pad" style={{ marginBottom: 16 }}>
+            <div className="section-label">Shelf defaults</div>
+            <div className="field"><label>New shelves display as</label>
+              <select className="select" value={((profile as any)?.prefs?.default_view as string) ?? "spines"}
+                onChange={async (e) => {
+                  const prefs = (profile as any)?.prefs ?? {};
+                  await supabase.from("profiles").update({ prefs: { ...prefs, default_view: e.target.value } }).eq("id", profile!.id);
+                  refreshProfile(); toast("Default saved — existing shelves keep their own setting.");
+                }}>
+                <option value="spines">Spines (the proper way)</option>
+                <option value="covers">Covers — face out</option>
+                <option value="list">List — pure utility</option>
+              </select></div>
+          </div>
+
+          <div className="card pad" style={{ marginBottom: 16 }}>
             <div className="section-label">Security</div>
             <div className="field"><label>New password</label>
               <input className="input" type="password" value={pw} onChange={(e) => setPw(e.target.value)} /></div>

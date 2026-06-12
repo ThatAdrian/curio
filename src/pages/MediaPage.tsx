@@ -168,13 +168,17 @@ export default function MediaPage() {
               <a className="btn" target="_blank" rel="noreferrer"
                 href={`https://www.themoviedb.org/${media.media_type === "film" ? "movie" : "tv"}/${media.external_id}`}>ℹ TMDB</a>
             )}
-            {media.media_type === "game" && (
-              <>
-                <a className="btn" target="_blank" rel="noreferrer"
-                  href={`https://www.xbox.com/en-GB/play/search?q=${encodeURIComponent(media.title)}`}>☁ Xbox Cloud</a>
-                <a className="btn" target="_blank" rel="noreferrer" href="https://play.geforcenow.com">☁ GeForce NOW</a>
-              </>
-            )}
+            {media.media_type === "game" && (() => {
+              const plats: string[] = media.metadata?.platforms ?? [];
+              const xb = plats.some((pl) => /^X/i.test(pl));
+              const pc = plats.includes("PC");
+              if (!xb && !pc) return null;
+              return (<>
+                {xb && <a className="btn" target="_blank" rel="noreferrer"
+                  href={`https://www.xbox.com/en-GB/play/search?q=${encodeURIComponent(media.title)}`}>☁ Xbox Cloud</a>}
+                {pc && <a className="btn" target="_blank" rel="noreferrer" href="https://play.geforcenow.com">☁ GeForce NOW</a>}
+              </>);
+            })()}
           </div>
         </div>
       </div>

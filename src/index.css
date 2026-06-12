@@ -258,7 +258,7 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;str
 .top8{display:grid;grid-template-columns:repeat(auto-fill,minmax(108px,1fr));gap:12px}
 .top8 .cell{position:relative;border-radius:var(--radius-s);overflow:hidden;aspect-ratio:3/4;border:1px solid var(--stroke);transition:transform .3s var(--spring),box-shadow .3s}
 .top8 .cell:hover{transform:translateY(-5px) rotate(-1deg);box-shadow:var(--shadow-pop)}
-.top8 .cell .rank{position:absolute;top:7px;left:7px;font-family:var(--font-mono);font-size:10px;background:rgba(0,0,0,.45);color:#fff;padding:2px 7px;border-radius:999px;backdrop-filter:blur(6px)}
+.top8 .cell .rank{position:absolute;top:7px;left:7px;font-family:var(--font-mono);font-size:10px;background:rgba(0,0,0,.45);color:#fff;padding:2px 7px;border-radius:999px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 
 /* generated covers */
 .cover{width:100%;height:100%;display:flex;flex-direction:column;justify-content:flex-end;padding:10px;color:#fff;position:relative;background:var(--cov,linear-gradient(160deg,#333,#111))}
@@ -328,7 +328,7 @@ svg.ic{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;str
 .feed-item .when{font-family:var(--font-mono);font-size:11px;color:var(--text-3);white-space:nowrap}
 
 /* ============================================================ customizer */
-.sheet-scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .35s var(--ease);z-index:80}
+.sheet-scrim{position:fixed;inset:0;background:rgba(0,0,0,.35);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;pointer-events:none;transition:opacity .35s var(--ease);z-index:80}
 .sheet-scrim.open{opacity:1;pointer-events:auto}
 .sheet{
   position:fixed;top:0;right:0;bottom:0;width:min(380px,94vw);z-index:90;
@@ -863,7 +863,7 @@ body[data-shelfskin="metal"] .unit-wood .unit-foot, body[data-shelfskin="metal"]
 .shelf-unit.skin-pastel .plank{background:linear-gradient(180deg,#fff,#e0c4d6) !important;border-top:none !important}
 .shelf-unit.skin-pastel .unit-label{color:#7a3a5c !important;border-color:rgba(122,58,92,.4) !important;background:rgba(255,255,255,.5) !important;text-shadow:none}
 .shelf-unit.skin-pastel .unit-foot{background:rgba(255,255,255,.35) !important;color:#7a3a5c !important}
-.shelf-unit.skin-poly{border-image:none !important;border-color:rgba(255,255,255,.25) !important;background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.05)) !important;backdrop-filter:blur(8px)}
+.shelf-unit.skin-poly{border-image:none !important;border-color:rgba(255,255,255,.25) !important;background:linear-gradient(180deg,rgba(255,255,255,.14),rgba(255,255,255,.05)) !important;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .shelf-unit.skin-poly .plank{background:linear-gradient(180deg,rgba(255,255,255,.35),rgba(255,255,255,.12)) !important;border-top:1px solid rgba(255,255,255,.45) !important}
 
 /* decoration picker + placement */
@@ -1378,3 +1378,38 @@ footer.note img{height:11px;vertical-align:middle;margin:0 4px}
 @keyframes pgPrev{0%{transform:rotateY(0)}100%{transform:rotateY(86deg)}}
 
 @media(max-width:560px){.gbook.turn-next .gb-pg,.gbook.turn-prev .gb-pg{animation:none}}
+
+
+/* ================= PLATFORM & INTERACTION OVERRIDES (production) ================= */
+/* the one global popup (React) — overrides the mockup's per-spine absolute popup */
+.sp-pop{position:fixed;top:0;left:0;transform:translateY(8px) scale(.96)}
+.sp-pop.show{opacity:1;pointer-events:auto;transform:none}
+.sp{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.dustf{position:absolute;inset:0;z-index:3;pointer-events:none;border-radius:2px;transition:opacity .5s;opacity:.95;
+  background:repeating-linear-gradient(115deg,rgba(185,175,155,.18) 0 2px,transparent 2px 6px),
+             linear-gradient(180deg,rgba(165,155,135,.28),rgba(120,110,95,.1))}
+.sprite{bottom:96px}
+@media(hover:none){.sp.hov{margin-right:calc(var(--cw) * .72)}}
+body.reduce-motion *,body.reduce-motion *::before,body.reduce-motion *::after{animation:none !important;transition:none !important}
+
+/* iOS-widget module sizes */
+.pmod.size-s{padding-bottom:8px}
+.pmod.size-s .modclip{max-height:148px;overflow:hidden;position:relative}
+.pmod.size-s .modclip::after{content:"";position:absolute;left:0;right:0;bottom:0;height:46px;background:linear-gradient(transparent,var(--surface));pointer-events:none}
+.pmod.size-l{grid-column:1 / -1}
+.mod-tools .sz{font-family:var(--font-mono);font-size:8.5px;letter-spacing:.05em}
+
+/* static plastic case for review covers */
+.static-case{position:relative;width:58px;flex:none;border-radius:4px;padding:4px 4px 4px 9px;
+  background:linear-gradient(135deg,#232833,#11141a);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07),0 7px 14px rgba(0,0,0,.45)}
+.static-case::before{content:"";position:absolute;left:4px;top:5px;bottom:5px;width:2px;background:rgba(255,255,255,.14);border-radius:2px}
+.static-case::after{content:"";position:absolute;inset:0;border-radius:4px;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.09) 45%,transparent 56%);pointer-events:none}
+
+/* cover & list shelf views */
+.cover-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(86px,1fr));gap:14px;padding:10px 4px 16px}
+.cover-grid>button{position:relative;transition:transform .35s var(--spring)}
+.cover-grid>button:hover{transform:translateY(-7px) scale(1.04);z-index:2}
+.list-view>button{display:flex;width:100%;text-align:left;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid var(--stroke);transition:background .2s}
+.list-view>button:hover{background:var(--surface-2)}
+.song-embed iframe{border:0;border-radius:12px;width:100%;height:88px;display:block}
+a.conn-chip,a.conn-chip:hover{text-decoration:none;color:var(--text)}

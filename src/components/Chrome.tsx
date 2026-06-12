@@ -153,7 +153,14 @@ export function TopBar() {
         <div className="notif-panel">
           <div className="section-label">For you — private</div>
           {notifs.length === 0 && <p className="faint" style={{ fontSize: 13 }}>Nothing yet. Quiet shelves, calm mind.</p>}
-          {notifs.map((n) => (
+          {notifs.filter((n) => {
+            const pf: any = profile?.prefs ?? {};
+            const t = n.type as string;
+            const g = t.startsWith("bag_") || t === "wrap_received" ? "notif_gifts"
+              : t.startsWith("loan_") ? "notif_loans"
+              : t === "room_invite" ? "notif_clubs" : "notif_social";
+            return pf[g] !== false;
+          }).map((n) => (
             <div key={n.id} className={"notif" + (!n.read_at ? " unread" : "")} style={{ cursor: "pointer" }}
               onClick={() => {
                 setOpen(false);

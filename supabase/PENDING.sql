@@ -26,3 +26,6 @@ create policy reports_club_mods_update on reports for update
   using (target_kind = 'club_post' and exists (
     select 1 from club_posts cp join club_members m on m.club_id = cp.club_id
     where cp.id = reports.target_id and m.user_id = auth.uid() and m.role in ('owner','mod')));
+
+-- 00007: per-shelf display mode
+alter table shelves add column if not exists view_mode text not null default 'spines';

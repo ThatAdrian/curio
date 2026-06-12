@@ -34,9 +34,11 @@ function dims(it: ShelfItemRow) {
   }
 }
 
-function spineColor(title: string) {
-  const pals = ["#2c2c31", "#3a3128", "#27343b", "#1f2b3a", "#3a2a5c", "#5c2f33", "#23272b", "#7a5a2e", "#1f3a4a", "#4a4a52", "#2a3340", "#6f9a0a"];
-  return pals[hash(title) % pals.length];
+const TYPE_HUE: Record<MediaType, [number, number]> = { film: [355, 36], tv: [28, 40], game: [266, 38], book: [148, 26], music: [208, 34] };
+function spineColor(title: string, type: MediaType = "book") {
+  const [bh, sat] = TYPE_HUE[type];
+  const h = bh + (hash(title) % 44) - 22, l = 15 + (hash(title + "x") % 9);
+  return `linear-gradient(180deg, hsl(${h} ${sat}% ${l + 11}%), hsl(${h} ${sat}% ${l}%))`;
 }
 
 const PLAT_COLORS: Record<string, string> = {
@@ -63,10 +65,13 @@ export function emitMote(x: number, y: number) {
   setTimeout(() => m.remove(), 850);
 }
 
-export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = true }: {
-  items: ShelfItemRow[]; ownerView: boolean; ownerId?: string; onChanged: () => void; showPlays?: boolean;
+export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = true, view = "spines" }: {
+  items: ShelfItemRow[]; ownerView: boolean; ownerId?: string; onChanged: () => void; showPlays?: boolean; view?: "spines" | "covers" | "list";
 }) {
-  const { session, toast } = useApp();
+  const { session, profile, toast } = useApp();
+  const prefs: any = profile?.prefs ?? {};
+  const dustOn = prefs.dust !== false, stickersOn = prefs.stickers !== false, leanOn = prefs.lean !== false;
+  const pinned = useRef<string | null>(null);
   const nav = useNavigate();
   const [hov, setHov] = useState<string | null>(null);
   const [pop, setPop] = useState<{ item: ShelfItemRow; x: number; y: number } | null>(null);
@@ -126,15 +131,28 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = tru
   function scheduleHide() {
     window.clearTimeout(hideT.current);
     hideT.current = window.setTimeout(() => {
-      if (peel.current) return scheduleHide(); // mid-peel: keep the cover out
+      if (peel.current || pinned.current) return scheduleHide();
       setHov(null); setPop(null);
     }, 300);
   }
   useEffect(() => {
-    const h = () => { setHov(null); setPop(null); };
+    const h = () => { if (!pinned.current) { setHov(null); setPop(null); } };
+    const down = (e: PointerEvent) => {
+      if (!pinned.current) return;
+      if ((e.target as HTMLElement).closest?.(".sp, .sp-pop, .cover-grid > button, .list-view > button")) return;
+      pinned.current = null; setHov(null); setPop(null);
+    };
     addEventListener("scroll", h, { passive: true });
-    return () => removeEventListener("scroll", h);
+    addEventListener("pointerdown", down);
+    return () => { removeEventListener("scroll", h); removeEventListener("pointerdown", down); };
   }, []);
+
+  function touchPin(it: ShelfItemRow, el: HTMLElement, e: React.PointerEvent) {
+    if (e.pointerType !== "touch") return;
+    if (pinned.current === it.id) { pinned.current = null; setHov(null); setPop(null); return; }
+    pinned.current = it.id;
+    showPop(it, el);
+  }
 
   async function dustWipe(it: ShelfItemRow, e: React.PointerEvent, el: HTMLElement) {
     if (!ownerView || !isStale(it) || peel.current) return;
@@ -180,16 +198,48 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = tru
     setPop(null); setHov(null);
   }
 
+  const popTarget = (it: ShelfItemRow) => (e: React.PointerEvent | React.MouseEvent) => {
+    const el = e.currentTarget as HTMLElement;
+    if ("pointerType" in e && (e as any).pointerType === "touch") { touchPin(it, el, e as any); return; }
+    showPop(it, el);
+  };
+
   return (
     <>
-      <div className="row3d">
+      {view === "covers" && (
+        <div className="cover-grid">
+          {items.map((it) => (
+            <button key={it.id} onPointerEnter={popTarget(it)} onPointerDown={popTarget(it)} onPointerLeave={scheduleHide}>
+              <Cover url={it.media_variants?.cover_url ?? it.media_items.cover_url} title={it.media_items.title}
+                sub={it.media_items.year ? String(it.media_items.year) : undefined}
+                style={{ aspectRatio: it.media_items.media_type === "music" ? "1" : "2/3" }} />
+            </button>
+          ))}
+          {items.length === 0 && <span className="mono faint" style={{ fontSize: 10, padding: 20 }}>empty shelf</span>}
+        </div>
+      )}
+      {view === "list" && (
+        <div className="list-view" style={{ padding: "6px 2px 14px" }}>
+          {items.map((it) => (
+            <button key={it.id} onPointerEnter={popTarget(it)} onPointerDown={popTarget(it)} onPointerLeave={scheduleHide}>
+              <span style={{ color: `var(--${it.media_items.media_type})` }}>●</span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <b style={{ fontSize: 13.5, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{it.media_items.title}</b>
+                <span className="mono faint" style={{ fontSize: 9.5 }}>{it.media_items.year ?? ""}{it.completion > 0 ? ` · ${it.completion}%` : ""}{showPlays && it.times_consumed > 0 ? ` · ${it.times_consumed} plays` : ""}</span>
+              </span>
+            </button>
+          ))}
+          {items.length === 0 && <span className="mono faint" style={{ fontSize: 10, padding: 20 }}>empty shelf</span>}
+        </div>
+      )}
+      {view === "spines" && <div className="row3d">
         {items.map((it) => {
           const m = it.media_items;
           const d = dims(it)!;
-          const stale = isStale(it);
+          const stale = dustOn && isStale(it);
           const worn = showPlays && it.times_consumed >= 20;
           const loved = worn && m.media_type === "music";
-          const lean = hash(m.title) % 7 === 3;
+          const lean = leanOn && hash(m.title) % 7 === 3;
           const plat = (m.metadata?.platforms?.[0] as string) ?? "";
           return (
             <div key={it.id}
@@ -197,20 +247,21 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = tru
               data-type={m.media_type}
               style={{ "--w": d.w + "px", "--h": d.h + "px", "--cw": d.cw + "px" } as any}
               tabIndex={0}
-              onPointerEnter={(e) => showPop(it, e.currentTarget)}
+              onPointerDown={(e) => touchPin(it, e.currentTarget, e)}
+              onPointerEnter={(e) => { if (!pinned.current) showPop(it, e.currentTarget); }}
               onPointerLeave={scheduleHide}
               onPointerMove={(e) => dustWipe(it, e, e.currentTarget)}
             >
               <div className="sp3d">
                 <div className="face fspine" data-plat={plat}
-                  style={{ background: spineColor(m.title), "--pcol": PLAT_COLORS[plat] ?? "#444" } as any}>
+                  style={{ background: spineColor(m.title, m.media_type), "--pcol": PLAT_COLORS[plat] ?? "#444" } as any}>
                   <span className="stxt">{m.title}</span>
                   {stale && <div className="dustf" />}
                 </div>
                 <div className="face ffront">
                   <Cover url={it.media_variants?.cover_url ?? m.cover_url} title={m.title}
                     sub={`${MEDIA_LABELS[m.media_type]}${m.year ? " · " + m.year : ""}${it.media_variants ? " · " + it.media_variants.name : ""}`} />
-                  {it.price_sticker?.label && ownerView && (
+                  {stickersOn && it.price_sticker?.label && ownerView && (
                     <span className="price-stk" data-peel
                       onPointerDown={(e) => {
                         e.preventDefault(); e.stopPropagation();
@@ -221,7 +272,7 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = tru
                       {it.price_sticker.label}<small>charity find</small>
                     </span>
                   )}
-                  {it.price_sticker?.label && !ownerView && <span className="price-stk" style={{ cursor: "default" }}>{it.price_sticker.label}<small>as marked</small></span>}
+                  {stickersOn && it.price_sticker?.label && !ownerView && <span className="price-stk" style={{ cursor: "default" }}>{it.price_sticker.label}<small>as marked</small></span>}
                   {stale && <div className="dustf" />}
                 </div>
               </div>
@@ -233,7 +284,7 @@ export function ShelfRow({ items, ownerView, ownerId, onChanged, showPlays = tru
             empty shelf — hit + Add and give it a life
           </div>
         )}
-      </div>
+      </div>}
 
       {/* global fixed popup */}
       <div className={"sp-pop" + (pop ? " show" : "")}
@@ -307,7 +358,7 @@ function InspectModal({ item, onClose }: { item: ShelfItemRow | null; onClose: (
   const d = dims(item)!;
   const K = m.media_type === "music" ? 1.5 : 1.75;
   const W = d.cw * K, H = d.h * K, D = Math.max(d.w * K, 8);
-  const spine = spineColor(m.title);
+  const spine = spineColor(m.title, m.media_type);
   const face = (w: number, h: number, tf: string, bg: string, inner?: React.ReactNode) => (
     <div className="iface" style={{
       width: w, height: h, marginLeft: -w / 2, marginTop: -h / 2, transform: tf, background: bg, borderRadius: 3,
